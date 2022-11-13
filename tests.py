@@ -33,3 +33,21 @@ def testAccuracyByClass(model, data_loader, classes):
                 total[label] += 1
                 accuracies[label] += (pred == label).item()
     return [accuracies[i] / total[i] for i in range(n)]
+
+def testPoisonSuccess(model, dataset, patch, n=1000):
+    totaldif = 0
+    for i in range(min(n, len(dataset))):
+        image, _ = dataset[i]
+        model.eval()
+        trueprob = model(image.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
+        alpha = 1
+        poisonimage = image
+        poisonimage[0:3, 0:4, 0:4] = alpha * patch[0:3, 0:4, 0:4] + (1 - alpha) * poisonimage[0:3, 0:4, 0:4]
+        poisonprob = model(poisonimage.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
+        #print('True probability: ', trueprob)
+        #print('Poison probability: ', poisonprob)
+        #print('Difference: ', poisonprob - trueprob)
+        totaldif += poisonprob - trueprob
+    if type(totaldif == torch.Tensor):
+        totaldif = totaldif.detach().item()
+    return totaldif/n
