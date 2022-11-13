@@ -2,5 +2,6 @@
 .DS_Store
 __pycache__/
 data/
-teacher.pt
+*.pt
 patch.png
+*.pkl
