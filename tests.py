@@ -1,12 +1,14 @@
 import torch
 
-def testAccuracy(model, data_loader):
+def testAccuracy(model, data_loader, num=10000):
     model.eval()
     accuracy = 0.0
     total = 0.0
     
     with torch.no_grad():
-        for data in data_loader:
+        for i, data in enumerate(data_loader):
+            if i >= num:
+                break
             images, labels = data
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
