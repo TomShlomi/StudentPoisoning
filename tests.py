@@ -47,6 +47,5 @@ def testPoisonSuccess(model, dataset, patch, n=1000):
         poisonimage = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(poisonimage)
         poisonprob = model(poisonimage.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
         totaldif += poisonprob - trueprob
-    if type(totaldif) == torch.Tensor:
-        totaldif = totaldif.detach().item()
+    totaldif = totaldif.detach().item()
     return totaldif/n
