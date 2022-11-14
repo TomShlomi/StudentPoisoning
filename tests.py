@@ -49,3 +49,24 @@ def testPoisonSuccess(model, dataset, patch, n=1000):
         totaldif += poisonprob - trueprob
     totaldif = totaldif.detach().item()
     return totaldif/n
+
+def testPoisonSuccessPercent(model, cleandataset, rawdataset, patch, target):
+    flipped = 0.0
+    total = 0.0
+    model.eval()
+    for i in range(len(cleandataset)):
+        image, label = cleandataset[i]
+        if label == target:
+            continue
+        total += 1
+        original_classification = model(image.reshape((1, 3, 32, 32))).argmax(dim=-1).item()
+        if original_classification == target:
+            flipped -= 1
+        alpha = 1
+        poisonimage, _ = rawdataset[i]
+        poisonimage[0:3, 0:4, 0:4] = alpha * patch[0:3, 0:4, 0:4] + (1 - alpha) * poisonimage[0:3, 0:4, 0:4]
+        poisonimage = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(poisonimage)
+        poison_classification = model(poisonimage.reshape((1, 3, 32, 32))).argmax(dim=-1).item()
+        if poison_classification == target:
+            flipped += 1
+    return flipped / total
