@@ -38,14 +38,15 @@ def testAccuracyByClass(model, data_loader, classes):
     return [accuracies[i] / total[i] for i in range(n)]
 
 # Returns the average increase in probability of the target class when the patch is added to images in dataset
-def testPoisonSuccess(model, dataset, patch, n=1000):
+def testPoisonSuccess(model, dataset, patch, n=10000):
     totaldif = 0
     for i in range(min(n, len(dataset))):
-        image, _ = dataset[i]
+        rawimage, _ = dataset[i]
         model.eval()
+        image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(rawimage)
         trueprob = model(image.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
         alpha = 1
-        poisonimage = image
+        poisonimage = rawimage
         poisonimage[0:3, 0:4, 0:4] = alpha * patch[0:3, 0:4, 0:4] + (1 - alpha) * poisonimage[0:3, 0:4, 0:4]
         poisonimage = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(poisonimage)
         poisonprob = model(poisonimage.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
