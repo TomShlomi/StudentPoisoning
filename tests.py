@@ -1,6 +1,7 @@
 import torch
 from torchvision import transforms
 
+# Returns the accuracy of model on the dataset loaded by data_loader
 def testAccuracy(model, data_loader, num=10000):
     model.eval()
     accuracy = 0.0
@@ -17,6 +18,7 @@ def testAccuracy(model, data_loader, num=10000):
             accuracy += (predicted == labels).sum().item()
     return accuracy / total
 
+# Returns the accuracy of model on every class in classes on the dataset loaded by data_loader
 def testAccuracyByClass(model, data_loader, classes):
     model.eval()
     n = len(classes)
@@ -35,6 +37,7 @@ def testAccuracyByClass(model, data_loader, classes):
                 accuracies[label] += (pred == label).item()
     return [accuracies[i] / total[i] for i in range(n)]
 
+# Returns the average increase in probability of the target class when the patch is added to images in dataset
 def testPoisonSuccess(model, dataset, patch, n=1000):
     totaldif = 0
     for i in range(min(n, len(dataset))):
@@ -50,6 +53,7 @@ def testPoisonSuccess(model, dataset, patch, n=1000):
     totaldif = totaldif.detach().item()
     return totaldif/n
 
+# Returns the net percentage of patched images in (clean/raw)dataset (should represent the same data) that become classified as target by model when patch is added
 def testPoisonSuccessPercent(model, cleandataset, rawdataset, patch, target):
     flipped = 0.0
     total = 0.0
