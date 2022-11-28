@@ -49,13 +49,14 @@ def testPoisonSuccess(model, dataset, patch, n=1000, target=0):
     
     # TODO(ltang): refactor code to compute delta in batch for speedup
     for i in range(min(n, len(dataset))):
-        image, _ = dataset[i]
+        rawimage, _ = dataset[i]
+        image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(rawimage)
         image = image.to(device)   
         # TODO(ltang): make the target class more general 
         true_prob = model(image.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
         # Fully opaque trigger
         alpha = 1
-        poisonimage = image
+        poisonimage = rawimage
         poisonimage[0:3, 0:4, 0:4] = alpha * patch[0:3, 0:4, 0:4] + (1 - alpha) * poisonimage[0:3, 0:4, 0:4]
         poisonimage = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(poisonimage)
         poisonprob = model(poisonimage.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
