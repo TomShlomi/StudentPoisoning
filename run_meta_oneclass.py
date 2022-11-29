@@ -1,6 +1,6 @@
 import torch
 import torch.utils.data
-from utils_meta import load_model_setting, epoch_meta_train_oc, epoch_meta_eval_oc
+from utils_meta import epoch_meta_train_oc, epoch_meta_eval_oc
 from meta_classifier import MetaClassifierOC
 import argparse
 from tqdm import tqdm

@@ -17,7 +17,7 @@ parser.add_argument(
     "--troj_type",
     type=str,
     required=True,
-    help="Specify the attack to evaluate. M: modification attack; B: blending attack.",
+    help="Specify the attack to evaluate. patch: modification attack; blend: blending attack.",
 )
 parser.add_argument(
     "--no_qt",
@@ -99,6 +99,7 @@ if __name__ == "__main__":
             print("Training Meta Classifier %d/%d" % (i + 1, N_REPEAT))
             if args.no_qt:
                 print("No query tuning.")
+                # keep meta_model.inp fixed
                 optimizer = torch.optim.Adam(
                     list(meta_model.fc.parameters())
                     + list(meta_model.output.parameters()),

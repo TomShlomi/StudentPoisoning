@@ -6,9 +6,7 @@ from torch import Tensor
 from model_lib.types import AttackType, AttackSpec
 
 
-def apply_attack(
-    X: Tensor, y: int, atk_setting: AttackSpec
-) -> Tuple[Tensor, int]:
+def apply_attack(X: Tensor, y: int, atk_setting: AttackSpec) -> Tuple[Tensor, int]:
     p_size, pattern, loc, alpha, target_y, inject_p = atk_setting
 
     X_new = X.clone()

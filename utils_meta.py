@@ -6,49 +6,6 @@ from sklearn.metrics import roc_auc_score
 from model_lib.types import TaskType
 
 
-def load_model_setting(task: TaskType):
-    """
-    Get settings for a neural network to solve a particular task (image classification or text classification).
-    :return: the model architecture, the input size, number of classes,
-    the normed mean and standard deviation (for image datasets),
-    and whether the task is discrete (NLP)
-    """
-    if task == "mnist":
-        from model_lib.mnist_cnn_model import Model
-
-        input_size = (1, 28, 28)
-        class_num = 10
-        normed_mean = np.array((0.1307,))
-        normed_std = np.array((0.3081,))
-        is_discrete = False
-    elif task == "cifar10":
-        from model_lib.cifar10_cnn_model import Model
-
-        input_size = (3, 32, 32)
-        class_num = 10
-        normed_mean = np.reshape(np.array((0.4914, 0.4822, 0.4465)), (3, 1, 1))
-        normed_std = np.reshape(np.array((0.247, 0.243, 0.261)), (3, 1, 1))
-        is_discrete = False
-    elif task == "audio":
-        from model_lib.audio_rnn_model import Model
-
-        input_size = (16000,)
-        class_num = 10
-        normed_mean = normed_std = None
-        is_discrete = False
-    elif task == "rtNLP":
-        from model_lib.rtNLP_cnn_model import Model
-
-        input_size = (1, 10, 300)
-        class_num = 1  # Two-class, but only one output
-        normed_mean = normed_std = None
-        is_discrete = True
-    else:
-        raise NotImplementedError("Unknown task %s" % task)
-
-    return Model, input_size, class_num, normed_mean, normed_std, is_discrete
-
-
 def epoch_meta_train(
     meta_model: nn.Module, basic_model, optimizer, dataset, is_discrete, threshold=0.0
 ):

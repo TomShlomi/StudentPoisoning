@@ -23,7 +23,7 @@ def generate_attack_spec(troj_type: AttackType) -> AttackSpec:
     MAX_SIZE = 28
     CLASS_NUM = 10
 
-    if troj_type == "jumbo":
+    if troj_type == "jumbo":  # randomly sample over all attacks
         p_size = np.random.choice([2, 3, 4, 5, MAX_SIZE], 1)[0]
         if p_size < MAX_SIZE:
             alpha = np.random.uniform(0.2, 0.6)
@@ -46,10 +46,10 @@ def generate_attack_spec(troj_type: AttackType) -> AttackSpec:
         loc = (0, 0)
 
     pattern_num = np.random.randint(
-        1, p_size ** 2
+        1, p_size**2
     )  # how many "on" bits to include in the pattern
-    one_idx = np.random.choice(list(range(p_size ** 2)), pattern_num, replace=False)
-    pattern_flat = np.zeros(p_size ** 2)
+    one_idx = np.random.choice(list(range(p_size**2)), pattern_num, replace=False)
+    pattern_flat = np.zeros(p_size**2)
     pattern_flat[one_idx] = 1
     pattern = np.reshape(pattern_flat, (p_size, p_size))
     target_y = np.random.randint(CLASS_NUM)

@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 
-from model_lib.types import TrojanGenerator, AttackSpec
+from model_lib.types import AttackApplier, AttackSpec
 
 
 class BackdoorDataset(Dataset):
@@ -15,7 +15,7 @@ class BackdoorDataset(Dataset):
         self,
         src_dataset: Dataset,
         atk_setting: AttackSpec,
-        apply_attack: TrojanGenerator,
+        apply_attack: AttackApplier,
         idx_subset=None,
         poison_only=False,
         need_pad=False,
@@ -81,7 +81,7 @@ class StudentPoisonDataset(Dataset):
         src_dataset: Dataset,
         teacher: nn.Module,
         atk_setting: AttackSpec,
-        apply_attack: TrojanGenerator,
+        apply_attack: AttackApplier,
         idx_subset=None,
         poison_only=False,
         need_pad=False,
@@ -134,7 +134,7 @@ class StudentPoisonDataset(Dataset):
             X, y = self.src_dataset[self.poison_indices[idx]]
         else:
             X, y = self.src_dataset[self.poison_indices[idx - len(self.idx_subset)]]
-        
+
         # get the teacher's probability for the target class and adjust the alpha of the patch accordingly
         teacher_out = self.teacher.forward(X).softmax()
         alpha = teacher_out[self.atk_setting.target_y]

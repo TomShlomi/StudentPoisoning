@@ -29,7 +29,9 @@ class SpeechCommand(Dataset):
                 self.Xs.append(X)
                 self.ys.append(cls_map[y])
 
-    def __len__(self,):
+    def __len__(
+        self,
+    ):
         return len(self.Xs)
 
     def __getitem__(self, idx):

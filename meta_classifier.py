@@ -83,9 +83,9 @@ class MetaClassifierOC(nn.Module):
         zero loss if score >= self.r, otherwise incur loss.
         """
         # use L2 norm of parameters as regularization term
-        reg = (self.w ** 2).sum() / 2
+        reg = (self.w**2).sum() / 2
         for p in self.fc.parameters():
-            reg = reg + (p ** 2).sum() / 2
+            reg = reg + (p**2).sum() / 2
         hinge_loss = F.relu(self.r - score)
         loss = reg + hinge_loss / self.v - self.r
         return loss

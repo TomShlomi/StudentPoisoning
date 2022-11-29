@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Callable, Tuple
 
 # Contains:
-# - the sidelength of the patch,
+# - the length of the patch (for visual models, this is the sidelength),
 # - the pattern itself,
 # - the location to apply the patch at,
 # - the transparency of the patch,
@@ -16,8 +16,10 @@ AttackSpec = namedtuple(
 
 AttackType = Enum("TrojType", ["patch", "blend"])
 
-TaskType = Enum("Task", ["mnist", "cifar10", "audio", "rtNLP"])
+TaskType = Enum("TaskType", ["mnist", "cifar10", "audio", "rtNLP"])
+
+AttackSpecGenerator = Callable[[AttackType], AttackSpec]
 
 # takes a input-output pair and the trojan pattern to apply,
-# and returns the new (poisoned) input-output paier
-TrojanGenerator = Callable[[Tensor, int, AttackSpec], Tuple[Tensor, Tensor]]
+# and returns the new (poisoned) input-output pair
+AttackApplier = Callable[[Tensor, int, AttackSpec], Tuple[Tensor, Tensor]]
