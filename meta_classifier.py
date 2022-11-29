@@ -11,7 +11,7 @@ class MetaClassifier(nn.Module):
     from another model is poisoned or not.
     """
 
-    def __init__(self, input_size, class_num, N_in=10, gpu=False):
+    def __init__(self, input_size, class_num, N_in=10):
         super(MetaClassifier, self).__init__()
         self.N_in = N_in
         self.N_h = 20
@@ -21,10 +21,6 @@ class MetaClassifier(nn.Module):
         self.inp = nn.Parameter(torch.zeros(self.N_in, *input_size).normal_() * 1e-3)
         self.fc = nn.Linear(self.N_in * self.class_num, self.N_h)
         self.output = nn.Linear(self.N_h, 1)
-
-        self.gpu = gpu
-        if self.gpu:
-            self.cuda()
 
     def forward(self, pred: Tensor):
         """
@@ -39,9 +35,7 @@ class MetaClassifier(nn.Module):
         """
         Calculate binary cross-entropy loss using the given logits (scores) and correct labels y.
         """
-        y_var = torch.FloatTensor([y])
-        if self.gpu:
-            y_var = y_var.cuda()
+        y_var = torch.FloatTensor([y]).to(y.device)
         l = F.binary_cross_entropy_with_logits(score, y_var)
         return l
 
@@ -51,7 +45,7 @@ class MetaClassifierOC(nn.Module):
     One-class meta classifier.
     """
 
-    def __init__(self, input_size, class_num, N_in=10, gpu=False):
+    def __init__(self, input_size, class_num, N_in=10):
         super(MetaClassifierOC, self).__init__()
         self.N_in = N_in
         self.N_h = 20
@@ -65,10 +59,6 @@ class MetaClassifierOC(nn.Module):
         # the percentile out of the scores to set the threshold at.
         self.v = 0.1
         self.r = 1.0  # the stored threshold
-
-        self.gpu = gpu
-        if self.gpu:
-            self.cuda()
 
     def forward(self, pred: Tensor, ret_feature=False):
         emb = F.relu(self.fc(pred.view(self.N_in * self.class_num)))

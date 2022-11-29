@@ -37,6 +37,8 @@ def generate_attack_spec(troj_type: AttackType) -> AttackSpec:
     elif troj_type == "blend":
         p_size = MAX_SIZE
         alpha = np.random.uniform(0.05, 0.2)
+    else:
+        raise NotImplementedError("Unrecognized trojan type %s" % troj_type)
 
     if p_size < MAX_SIZE:
         loc_x = np.random.randint(MAX_SIZE - p_size)

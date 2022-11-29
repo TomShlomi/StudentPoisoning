@@ -16,8 +16,6 @@ AttackSpec = namedtuple(
 
 AttackType = Enum("TrojType", ["patch", "blend"])
 
-TaskType = Enum("TaskType", ["mnist", "cifar10", "audio", "rtNLP"])
-
 AttackSpecGenerator = Callable[[AttackType], AttackSpec]
 
 # takes a input-output pair and the trojan pattern to apply,

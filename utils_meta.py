@@ -3,8 +3,6 @@ import torch
 from torch import nn
 from sklearn.metrics import roc_auc_score
 
-from model_lib.types import TaskType
-
 
 def epoch_meta_train(
     meta_model: nn.Module, basic_model, optimizer, dataset, is_discrete, threshold=0.0

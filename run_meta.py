@@ -85,9 +85,13 @@ if __name__ == "__main__":
     AUCs = []
     # Result contains randomness, so run several times and take the average
     for i in range(N_REPEAT):
-        shadow_model = Model(gpu=GPU)
-        target_model = Model(gpu=GPU)
-        meta_model = MetaClassifier(input_size, class_num, gpu=GPU)
+        shadow_model = Model()
+        target_model = Model()
+        meta_model = MetaClassifier(input_size, class_num)
+        if GPU:
+            shadow_model.cuda()
+            target_model.cuda()
+            meta_model.cuda()
         if inp_mean is not None:
             # Initialize the input using data mean and std
             init_inp = torch.zeros_like(meta_model.inp).normal_() * inp_std + inp_mean

@@ -2,6 +2,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.models import resnet18, resnet50
 
 
 def conv_layer(
@@ -27,8 +28,9 @@ class SimpleCNN(nn.Module):
     Two convolutional layers followed by a fully connected layer.
     """
 
-    def __init__(self, c_in=1, w_in=28, h_in=28, num_classes=10, gpu=False):
+    def __init__(self, c_in=1, h_in=28, w_in=28, num_classes=10):
         super().__init__()
+
         self.main = nn.Sequential(
             conv_layer(c_in, 16),
             conv_layer(16, 32, 4, padding=1, stride=2),
@@ -42,28 +44,21 @@ class SimpleCNN(nn.Module):
             nn.Linear(out.size(-1), 512), nn.Linear(512, num_classes)
         )
 
-        if gpu:
-            self.cuda()
-
     def forward(self, x):
-        """
-        :param x: a batch of MNIST images with shape (N, 1, H, W)
-        """
         return self.fc(self.main(x))
 
     def loss(self, pred: Tensor, label: Tensor):
-        if self.gpu:
-            label = label.cuda()
         return F.cross_entropy(pred, label)
 
 
 class MediumCNN(nn.Module):
     """
-    Two convolutional layers followed by a fully connected layer.
+    Five convolutional layers followed by a fully connected layer.
     """
 
-    def __init__(self, c_in=1, w_in=28, h_in=28, num_classes=10, gpu=False):
+    def __init__(self, c_in=1, h_in=28, w_in=28, num_classes=10):
         super().__init__()
+
         self.main = nn.Sequential(
             conv_layer(c_in, 16),
             conv_layer(16, 32),
@@ -80,16 +75,46 @@ class MediumCNN(nn.Module):
             nn.Linear(out.size(-1), 512), nn.Linear(512, num_classes)
         )
 
-        if gpu:
-            self.cuda()
-
     def forward(self, x):
-        """
-        :param x: a batch of MNIST images with shape (N, 1, H, W)
-        """
         return self.fc(self.main(x))
 
     def loss(self, pred: Tensor, label: Tensor):
-        if self.gpu:
-            label = label.cuda()
+        return F.cross_entropy(pred, label)
+
+
+class ResNet18(nn.Module):
+    """
+    A simple wrapper around resnet18.
+    """
+
+    def __init__(self, num_classes=10) -> None:
+        super().__init__()
+
+        self.main = resnet18(num_classes=num_classes)
+
+    def forward(self, x: Tensor):
+        if x.dim() == 3:
+            return self.main(x.unsqueeze(0))
+        return self.main(x)
+
+    def loss(self, pred: Tensor, label: Tensor):
+        return F.cross_entropy(pred, label)
+
+
+class ResNet50(nn.Module):
+    """
+    A simple wrapper around resnet50.
+    """
+
+    def __init__(self, num_classes=10) -> None:
+        super().__init__()
+
+        self.main = resnet50(num_classes=num_classes)
+
+    def forward(self, x):
+        if x.dim() == 3:
+            return self.main(x.unsqueeze(0))
+        return self.main(x)
+
+    def loss(self, pred: Tensor, label: Tensor):
         return F.cross_entropy(pred, label)
