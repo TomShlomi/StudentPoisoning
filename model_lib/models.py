@@ -1,7 +1,7 @@
 from enum import Enum
 import torch.nn as nn
 
-from utils_basic import DatasetConfig
+from data_utils import DatasetConfig
 
 
 model_types = ["CNN-2", "CNN-5", "ResNet-18", "ResNet-50", "ViT", "AudioRNN", "rt-cnn"]

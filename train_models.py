@@ -8,10 +8,9 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from tqdm import trange
 
+from data_utils import get_datasets, load_dataset_setting
 from model_lib.types import AttackType
 from utils_basic import (
-    get_datasets,
-    load_dataset_setting,
     train_model,
     task_types,
     TaskType,
@@ -36,13 +35,13 @@ parser.add_argument(
 parser.add_argument(
     "--num_epochs",
     type=int,
-    default=100,
-    help="Number of passes through the training data for shadow models. For training benign models, will be adjusted for target models so that total number of training samples is the same for shadow and target models.",
+    default=10,
+    help="Number of passes through the training data. For training benign models, this is the number of epochs for shadow models. For target models, it will be adjusted so that total number of training samples is the same.",
 )
 parser.add_argument(
     "--eval_interval",
     type=int,
-    default=4,
+    default=1,
     help="Evaluate every `eval_interval` epochs.",
 )
 parser.add_argument(
@@ -54,15 +53,25 @@ parser.add_argument(
 parser.add_argument(
     "--target_prop",
     type=float,
-    default=0.5,
+    default=1.0,  # previously 0.5
     help="Proportion of training data to use for target networks",
+)
+parser.add_argument(
+    "--data_root",
+    type=str,
+    default="./raw_data/",
+    help="The root directory for downloading datasets",
 )
 
 subparsers = parser.add_subparsers(dest="subcommand")
 
-basic_parser = subparsers.add_parser("basic")
+basic_parser = subparsers.add_parser(
+    "basic", help="Train a model on the full clean dataset."
+)
 
-benign_parser = subparsers.add_parser("benign")
+benign_parser = subparsers.add_parser(
+    "benign", help="Train shadow and target benign models."
+)
 benign_parser.add_argument(
     "--num_shadow",
     type=int,
@@ -84,11 +93,12 @@ jumbo_parser.add_argument(
     help="Number of shadow models to train",
 )
 
-poison_parser = subparsers.add_parser("poison")
+poison_parser = subparsers.add_parser("poison", help="Train poisoned target models.")
 poison_parser.add_argument(
     "--attack_type",
     type=str,
     required=True,
+    choices=["patch", "blend"],
     help="Specify the attack type. patch: modification attack; blend: blending attack.",
 )
 poison_parser.add_argument(
@@ -98,11 +108,13 @@ poison_parser.add_argument(
     help="Number of target models to train",
 )
 
-student_poison_parser = subparsers.add_parser("student_poison")
+student_poison_parser = subparsers.add_parser(
+    "student_poison", help="Train poisoned target models with student poisoning."
+)
 student_poison_parser.add_argument(
     "--num_target",
     type=int,
-    default=2048,
+    default=1,
     help="Number of target models to train",
 )
 student_poison_parser.add_argument(
@@ -110,7 +122,7 @@ student_poison_parser.add_argument(
     type=str,
     required=True,
     choices=model_types,
-    help="The teacher model (CNN-2, CNN-5, ResNet-18, ResNet-50, ViT)",
+    help="The teacher model",
 )
 student_poison_parser.add_argument(
     "--teacher_weights",
@@ -122,7 +134,14 @@ student_poison_parser.add_argument(
     "--attack_type",
     type=str,
     required=True,
+    choices=["patch", "blend"],
     help="Specify the attack type. patch: modification attack; blend: blending attack.",
+)
+student_poison_parser.add_argument(
+    "--inject_p",
+    type=float,
+    default=0.5,
+    help="The proportion of the training samples to poison during knowledge distillation",
 )
 
 
@@ -139,6 +158,8 @@ def run_experiment(
     shadow_prop: float,
     target_prop: float,
     eval_interval: int,
+    data_root: str,
+    inject_p: float,
 ):
     """
     A CLI.
@@ -156,7 +177,7 @@ def run_experiment(
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    config = load_dataset_setting(task_type, num_epochs)
+    config = load_dataset_setting(task_type, num_epochs, data_root)
 
     # get data indices for training for the shadow networks and target networks
     tot_num = len(config.trainset)
@@ -181,8 +202,7 @@ def run_experiment(
         num_epochs: int,
         prefix: str,
         trainloader: Optional[DataLoader] = None,
-        testloader_benign: Optional[DataLoader] = None,
-        testloader_poison: Optional[DataLoader] = None,
+        testloader: Optional[DataLoader] = None,
     ) -> Tuple[float, float]:
         """
         For benign training data, we only load all the datasets once, above.
@@ -194,37 +214,11 @@ def run_experiment(
             return 0.0, 0.0
 
         print("Training", num_trials, prefix, "models for", num_epochs, "epochs")
-        if trainloader is not None:
-            print(
-                "Train:",
-                len(trainloader),
-                "*",
-                trainloader.batch_size,
-                "| Test (benign):",
-                len(testloader_benign),
-                "*",
-                testloader_benign.batch_size,
-                "| Test (poisoned):",
-                len(testloader_poison),
-                "*",
-                testloader_poison.batch_size,
-            )
-
-        all_acc, all_acc_poison = np.zeros((2, num_trials))
 
         start_time = datetime.now().strftime("%y-%m-%d_%H-%M-%S")
 
         for i in trange(num_trials, desc="models"):
             # track each model's training as a separate Tensorboard run
-            writer = SummaryWriter(
-                "runs/%s/%s/%s_%d"
-                % (
-                    prefix,
-                    start_time,
-                    model_architecture,
-                    i,
-                )
-            )
 
             model = load_model_setting(model_architecture, config)
             if GPU:
@@ -236,25 +230,38 @@ def run_experiment(
                 or model_types == "student_poison"
             ):
                 assert trainloader is None
-                atk_spec = config.generate_attack_spec(attack_type)
-                trainloader, _, testloader_benign, testloader_poison = get_datasets(
+                attack_spec = config.generate_attack_spec(attack_type)
+                if inject_p is not None:
+                    attack_spec.inject_p = inject_p
+                trainloader, _, testloader = get_datasets(
                     config,
                     target_indices,
-                    atk_spec=atk_spec,
+                    attack_spec=attack_spec,
                     poison_training=True,
                     teacher=teacher,
                     gpu=GPU,
                     verbose=True,
                 )
                 trainloader.dataset.visualize(8, writer)
-                print("Attack spec:", atk_spec._replace(pattern="..."))
 
-            acc, acc_poison = train_model(
+            writer = SummaryWriter(
+                "runs/%s/%s/%s_%d"
+                % (
+                    prefix,
+                    start_time,
+                    model_architecture,
+                    i,
+                )
+            )
+
+            writer.add_text("attack_spec", str(attack_spec._replace(pattern="...")), i)
+
+            acc, acc_poison, trigger_effect = train_model(
                 model,
                 trainloader,
-                testloader_benign,
-                testloader_poison,
-                epoch_num=num_epochs,
+                testloader,
+                num_epochs=num_epochs,
+                num_classes=config.num_classes,
                 is_binary=config.is_binary,
                 gpu=GPU,
                 eval_interval=eval_interval,
@@ -270,33 +277,18 @@ def run_experiment(
             del model  # free up cuda memory
 
             print(
-                "Acc %.4f, Acc (poison) %.4f, Saved to %s @ %s"
-                % (acc, acc_poison, save_path, datetime.now())
+                "Acc %.4f, Acc (poison) %.4f, Trigger effectiveness %.4f, Saved to %s @ %s"
+                % (acc, acc_poison, trigger_effect, save_path, datetime.now())
             )
-            writer.add_scalar("trial/%s/acc" % prefix, acc)
-            writer.add_scalar("trial/%s/acc_poison" % prefix, acc_poison)
+
             writer.close()
 
-            all_acc[i] = acc
-            all_acc_poison[i] = acc_poison
-
-        avg_acc, avg_poison_acc = np.mean(all_acc), np.mean(all_acc_poison)
-        print(
-            "Accuracy (benign): %.4f | Accuracy (poisoned): %.4f"
-            % (avg_acc, avg_poison_acc)
-        )
-
     if model_types == "benign":
-        (
-            shadow_loader,
-            target_loader,
-            testloader_benign,
-            testloader_poison,
-        ) = get_datasets(
+        (shadow_loader, target_loader, testloader,) = get_datasets(
             config,
             shadow_indices,
             target_indices,
-            atk_spec=config.generate_attack_spec("jumbo"),
+            attack_spec=config.generate_attack_spec("jumbo"),
             poison_training=False,
             gpu=GPU,
             verbose=True,
@@ -311,8 +303,7 @@ def run_experiment(
             config.N_EPOCH,
             "shadow_benign",
             trainloader=shadow_loader,
-            testloader_benign=testloader_benign,
-            testloader_poison=testloader_poison,
+            testloader=testloader,
         )
 
         # generate and train target models.
@@ -321,8 +312,7 @@ def run_experiment(
             n_target_epoch,
             "target_benign",
             trainloader=target_loader,
-            testloader_benign=testloader_benign,
-            testloader_poison=testloader_poison,
+            testloader=testloader,
         )
     elif model_types == "jumbo":
         run_trials(num_shadow, config.N_EPOCH, "shadow_jumbo")
@@ -331,10 +321,10 @@ def run_experiment(
     elif model_types == "student_poison":
         run_trials(num_target, config.N_EPOCH, "target_troj_student_%s" % attack_type)
     elif model_types == "basic":
-        trainloader, _, testloader_benign, testloader_poison = get_datasets(
+        trainloader, _, testloader = get_datasets(
             config,
             target_indices,
-            atk_spec=config.generate_attack_spec("jumbo"),
+            attack_spec=config.generate_attack_spec("jumbo"),
             poison_training=False,
             gpu=GPU,
             verbose=True,
@@ -345,11 +335,12 @@ def run_experiment(
             config.N_EPOCH,
             "target_basic",
             trainloader=trainloader,
-            testloader_benign=testloader_benign,
-            testloader_poison=testloader_poison,
+            testloader=testloader,
         )
     else:
         raise NotImplementedError("Unrecognized model type %s" % model_types)
+
+    print("Done! See Tensorboard for results.")
 
 
 if __name__ == "__main__":
@@ -371,19 +362,23 @@ if __name__ == "__main__":
             shadow_prop=0.0,
             target_prop=1.0,
             eval_interval=args.eval_interval,
+            data_root=args.data_root,
+            inject_p=args.inject_p,
         )
     else:
         run_experiment(
-            args.task,
-            args.model,
-            getattr(args, "attack_type", None),
-            args.subcommand,
-            getattr(args, "num_shadow", 0),
-            getattr(args, "num_target", 0),
-            args.num_epochs,
-            getattr(args, "teacher", None),
-            getattr(args, "teacher_weights", None),
-            args.shadow_prop,
-            args.target_prop,
+            task_type=args.task,
+            model_architecture=args.model,
+            attack_type=getattr(args, "attack_type", None),
+            model_types=args.subcommand,
+            num_shadow=getattr(args, "num_shadow", 0),
+            num_target=getattr(args, "num_target", 0),
+            num_epochs=args.num_epochs,
+            teacher=getattr(args, "teacher", None),
+            teacher_weights=getattr(args, "teacher_weights", None),
+            shadow_prop=args.shadow_prop,
+            target_prop=args.target_prop,
             eval_interval=args.eval_interval,
+            data_root=args.data_root,
+            inject_p=getattr(args, "inject_p", None),
         )

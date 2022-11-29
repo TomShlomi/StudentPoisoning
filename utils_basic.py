@@ -1,230 +1,24 @@
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 import torch
 from torch import Tensor
 from torch import nn
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-import torchvision
-import torchvision.transforms as transforms
 from tqdm import trange
 import matplotlib.pyplot as plt
-
-from attacks.backdoor_datasets import BackdoorDataset, StudentPoisonDataset
-from model_lib.types import (
-    AttackSpec,
-    AttackSpecGenerator,
-    AttackApplier,
-)
 
 task_types = ["mnist", "cifar10", "audio", "rtNLP"]
 TaskType = Enum("TaskType", task_types)
 
 
-@dataclass
-class DatasetConfig(object):
-    BATCH_SIZE: int
-    N_EPOCH: int
-    trainset: Dataset
-    testset: Dataset
-    input_size: int
-    num_classes: int
-    normed_mean: float
-    normed_std: float
-    is_binary: bool
-    is_discrete: bool
-    need_pad: bool
-    apply_attack: AttackApplier = field(compare=False, repr=False)
-    generate_attack_spec: AttackSpecGenerator = field(compare=False, repr=False)
-
-
-def load_dataset_setting(
-    task: TaskType, num_epochs: int, data_root="./raw_data/"
-) -> DatasetConfig:
-    """
-    :return:
-    - batch size
-    - number of epochs
-    - training set
-    - testing set
-    - the input size
-    - number of classes
-    - the normed mean and standard deviation (for image datasets)
-    - whether or not the task is binary classification
-    - whether the task is discrete (NLP)
-    - whether the inputs need padding
-    - the function for applying a trojan pattern to an input-output pair
-    - the function for generating trojan patterns
-    """
-    if task == "mnist":
-        BATCH_SIZE = 100
-        transform = transforms.ToTensor()
-        trainset = torchvision.datasets.MNIST(
-            root=data_root, train=True, download=True, transform=transform
-        )
-        testset = torchvision.datasets.MNIST(
-            root=data_root, train=False, download=False, transform=transform
-        )
-        input_size = (1, 28, 28)
-        num_classes = 10
-        normed_mean = np.array((0.1307,))
-        normed_std = np.array((0.3081,))
-        is_discrete = False
-        is_binary = False
-        need_pad = False
-        from attacks.visual_attacks import generate_attack_spec, apply_attack
-    elif task == "cifar10":
-        BATCH_SIZE = 100
-        transform = transforms.ToTensor()
-        trainset = torchvision.datasets.CIFAR10(
-            root=data_root, train=True, download=True, transform=transform
-        )
-        testset = torchvision.datasets.CIFAR10(
-            root=data_root, train=False, download=False, transform=transform
-        )
-        input_size = (3, 32, 32)
-        num_classes = 10
-        normed_mean = np.reshape(np.array((0.4914, 0.4822, 0.4465)), (3, 1, 1))
-        normed_std = np.reshape(np.array((0.247, 0.243, 0.261)), (3, 1, 1))
-        is_discrete = False
-        is_binary = False
-        need_pad = False
-        from attacks.visual_attacks import generate_attack_spec, apply_attack
-    elif task == "audio":
-        BATCH_SIZE = 100
-        from model_lib.audio_dataset import SpeechCommand
-
-        trainset = SpeechCommand(split=0)
-        testset = SpeechCommand(split=2)
-        input_size = (16000,)
-        num_classes = 10
-        normed_mean = normed_std = None
-        is_discrete = False
-        is_binary = False
-        need_pad = False
-        from attacks.audio_attacks import generate_attack_spec, apply_attack
-    elif task == "rtNLP":
-        BATCH_SIZE = 64
-        from model_lib.rtNLP_dataset import RTNLP
-
-        trainset = RTNLP(train=True)
-        testset = RTNLP(train=False)
-        input_size = (1, 10, 300)
-        num_classes = 1  # Two-class, but only one output
-        normed_mean = normed_std = None
-        is_discrete = True
-        is_binary = True
-        need_pad = True
-        from attacks.nlp_attacks import generate_attack_spec, apply_attack
-    else:
-        raise NotImplementedError("Unknown task %s" % task)
-
-    return DatasetConfig(
-        BATCH_SIZE=BATCH_SIZE,
-        input_size=input_size,
-        is_binary=is_binary,
-        is_discrete=is_discrete,
-        N_EPOCH=num_epochs,
-        need_pad=need_pad,
-        normed_mean=normed_mean,
-        normed_std=normed_std,
-        num_classes=num_classes,
-        testset=testset,
-        trainset=trainset,
-        generate_attack_spec=generate_attack_spec,
-        apply_attack=apply_attack,
-    )
-
-
-def get_datasets(
-    config: DatasetConfig,
-    indices: np.array,
-    extra_indices: np.array = None,
-    atk_spec: AttackSpec = None,
-    poison_training=False,
-    teacher=None,
-    verbose=False,
-    gpu=True,
-):
-    def get_trainset(idx):
-        if poison_training:
-            if teacher is not None:
-                return StudentPoisonDataset(
-                    teacher,
-                    config.trainset,
-                    atk_spec,
-                    config.apply_attack,
-                    idx_subset=idx,
-                    need_pad=config.need_pad,
-                    gpu=gpu,
-                )
-            else:
-                return BackdoorDataset(
-                    config.trainset,
-                    atk_spec,
-                    config.apply_attack,
-                    idx_subset=idx,
-                    need_pad=config.need_pad,
-                )
-        else:
-            return Subset(config.trainset, idx)
-
-    trainloader = DataLoader(
-        get_trainset(indices), batch_size=config.BATCH_SIZE, shuffle=True
-    )
-    if extra_indices is not None:
-        extra_trainloader = DataLoader(
-            get_trainset(extra_indices), batch_size=config.BATCH_SIZE, shuffle=True
-        )
-    else:
-        extra_trainloader = None
-
-    # benign testing set
-    testloader_benign = DataLoader(config.testset, batch_size=config.BATCH_SIZE)
-
-    # poisoned-only testing set (probability of poisoning specified in attack setting)
-    if teacher is not None:
-        testset_poison = StudentPoisonDataset(
-            teacher,
-            config.testset,
-            atk_spec,
-            config.apply_attack,
-            poison_only=True,
-            gpu=gpu,
-        )
-    else:
-        testset_poison = BackdoorDataset(
-            config.testset, atk_spec, config.apply_attack, poison_only=True
-        )
-    testloader_poison = DataLoader(testset_poison, batch_size=config.BATCH_SIZE)
-
-    if verbose:
-        msg = "Train: %d * %d | Test (benign) %d * %d | Test(poison) %d * %d" % (
-            len(trainloader),
-            trainloader.batch_size,
-            len(testloader_benign),
-            testloader_benign.batch_size,
-            len(testloader_poison),
-            testloader_poison.batch_size,
-        )
-        if extra_trainloader is not None:
-            msg += "Extra train: %d * %d" % (
-                len(extra_trainloader),
-                extra_trainloader.batch_size,
-            )
-        print(msg)
-
-    return trainloader, extra_trainloader, testloader_benign, testloader_poison
-
-
 def train_model(
     model: nn.Module,
     trainloader: DataLoader,
-    testloader_benign: DataLoader,
-    testloader_poison: DataLoader,
-    epoch_num: int,
+    testloader: DataLoader,
+    num_epochs: int,
+    num_classes: int,
     eval_interval: int,
     is_binary: bool,
     gpu=True,
@@ -235,13 +29,15 @@ def train_model(
     :param eval_interval: evaluate every `eval_interval` epochs.
     """
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, num_epochs)
     if writer is None:
         close_writer = True
         writer = SummaryWriter()
     else:
         close_writer = False
 
-    t = trange(epoch_num, desc="epoch")
+    t = trange(num_epochs, desc="epochs")
+    step = 0
     for epoch in t:
         model.train()  # reset each epoch since evaluation sets it to eval
         cum_loss = 0.0
@@ -266,50 +62,109 @@ def train_model(
             tot = tot + B
             cum_acc += acc
 
-            writer.add_scalar("train/loss", loss.item(), i)
-            writer.add_scalar("train/acc", acc, i)
+            writer.add_scalar("train/loss", loss.item(), global_step=step)
+            writer.add_scalar("train/acc", acc, global_step=step)
+            step += 1
 
-        t.set_description(
-            "Epoch %d, loss = %.4f, acc = %.4f" % (epoch, cum_loss / tot, cum_acc / tot)
-        )
-
-        if epoch % eval_interval == eval_interval - 1 or epoch == epoch_num - 1:
-            acc = eval_model(model, testloader_benign, is_binary=is_binary, gpu=gpu)
-            acc_poison = eval_model(
-                model, testloader_poison, is_binary=is_binary, gpu=gpu
+        if epoch % eval_interval == eval_interval - 1 or epoch == num_epochs - 1:
+            t.set_description(f"[Epoch {epoch}] Evaluating...")
+            (
+                acc,
+                acc_poison,
+                trigger_effect,
+                class_acc,
+                class_acc_poison,
+                class_trigger_effect,
+                class_totals,
+            ) = eval_model(
+                model,
+                testloader,
+                is_binary=is_binary,
+                gpu=gpu,
+                num_classes=num_classes,
             )
 
-            writer.add_scalar("eval/acc/benign", acc, epoch)
-            writer.add_scalar("eval/acc/poison", acc_poison, epoch)
+            for label, avg, classes in (
+                ("acc_benign", acc, class_acc),
+                ("acc_poisoned", acc_poison, class_acc_poison),
+                ("trigger_effectiveness", trigger_effect, class_trigger_effect),
+            ):
+                writer.add_scalar("eval/acc/%s" % label, avg, epoch)
+                writer.add_scalars(
+                    "eval/acc/%s/classes" % label,
+                    {str(i): classes[i] / class_totals[i] for i in range(num_classes)},
+                    epoch,
+                )
+
+        t.set_description(
+            "[Epoch %d], loss = %.4f, acc = %.4f"
+            % (epoch, cum_loss / tot, cum_acc / tot)
+        )
+
+        scheduler.step()
 
     if close_writer:
         writer.close()
 
     # return the accuracy on the benign and poisoned datasets after last epoch
-    return acc, acc_poison
+    return acc, acc_poison, trigger_effect
 
 
 @torch.no_grad()
-def eval_model(model: nn.Module, dataloader: DataLoader, is_binary: bool, gpu=True):
+def eval_model(
+    model: nn.Module,
+    dataloader: DataLoader[Tuple[Tensor, Tensor, int, int]],
+    is_binary: bool,
+    num_classes: int,
+    gpu=True,
+):
     """
     A typical evaluation loop.
-    :return: The average accuracy across the dataloader
+    :param dataloader: a dataloader that returns the original image, patched image, original label, and true label.
+    :return:
+    - the average accuracy across benign images
+    - the avg acc across poisoned images
+    - the percentage of images where the trigger caused the model to misclassify
+    - the base counts of the above, plus the number of images per class
     """
     model.eval()
-    cum_acc = 0.0
-    tot = 0.0
-    for i, (x_in, y_in) in enumerate(dataloader):
-        B = x_in.size()[0]
+
+    # fast construction of some dummy vectors
+    cum_acc_benign, cum_acc_poison, num_swapped, class_totals = torch.zeros(
+        (4, num_classes)
+    ).long()
+
+    for X, X_patch, y, y_patch in dataloader:
+        B = X.size(0)
         if gpu:
-            x_in, y_in = x_in.cuda(), y_in.cuda()
-        pred = model(x_in)
+            X, X_patch = X.cuda(), X_patch.cuda()
+        pred_benign, pred_poison = model(torch.cat((X, X_patch))).split(B)
         if is_binary:
-            cum_acc += ((pred > 0).long().eq(y_in)).sum().item()
+            pred_benign, pred_poison = (pred_benign > 0).long(), (
+                pred_poison > 0
+            ).long()
         else:
-            pred_c = pred.max(1)[1]
-            cum_acc += (pred_c.eq(y_in)).sum().item()
-        tot = tot + B
-    return cum_acc / tot
+            pred_benign, pred_poison = pred_benign.argmax(dim=-1), pred_poison.argmax(
+                dim=-1
+            )
+        pred_benign, pred_poison = pred_benign.cpu(), pred_poison.cpu()
+
+        cum_acc_benign.scatter_add_(0, y, (pred_benign == y).long())
+        cum_acc_poison.scatter_add_(0, y, (pred_poison == y).long())
+        num_swapped.scatter_add_(
+            0, y, ((pred_poison == y_patch) & (pred_benign != y_patch)).long()
+        )
+        class_totals.scatter_add_(0, y, torch.ones(B, dtype=torch.long))
+
+    return (
+        cum_acc_benign.sum() / class_totals.sum(),
+        cum_acc_poison.sum() / class_totals.sum(),
+        num_swapped.sum() / class_totals.sum(),
+        cum_acc_benign,
+        cum_acc_poison,
+        num_swapped,
+        class_totals,
+    )
 
 
 def plt_imshow(img: Tensor, one_channel=False):

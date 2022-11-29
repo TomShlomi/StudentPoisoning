@@ -16,11 +16,12 @@ class BackdoorDataset(Dataset):
     def __init__(
         self,
         src_dataset: Dataset,
-        atk_spec: AttackSpec,
+        attack_spec: AttackSpec,
         apply_attack: AttackApplier,
         idx_subset=None,
         poison_only=False,
         need_pad=False,
+        return_both=False,
     ):
         """
         :param src_dataset: The original dataset
@@ -28,13 +29,15 @@ class BackdoorDataset(Dataset):
         :param apply_attack: The function for applying a trojan to an input-output pair
         :param choice: the subset of indices to use
         :param poison_only: Whether to only use poisoned images
+        :param return_both: Return (original, patched, label)
         """
         super().__init__()
 
         self.src_dataset = src_dataset
-        self.atk_setting = atk_spec
+        self.attack_spec = attack_spec
         self.apply_attack = apply_attack
         self.need_pad = need_pad
+        self.return_both = return_both
 
         self.poison_only = poison_only
         if idx_subset is None:
@@ -42,7 +45,7 @@ class BackdoorDataset(Dataset):
         self.idx_subset = idx_subset
 
         # pick the subset of the input-output pairs to poison
-        inject_p = atk_spec.inject_p
+        inject_p = attack_spec.inject_p
         self.poison_indices = np.random.choice(
             idx_subset, int(len(idx_subset) * inject_p), replace=False
         )
@@ -59,7 +62,7 @@ class BackdoorDataset(Dataset):
             # Return non-trojaned data
             if self.need_pad:
                 # In NLP task we need to pad input with length of Troj pattern
-                p_size = self.atk_setting[0]
+                p_size = self.attack_spec.p_size
                 X, y = self.src_dataset[self.idx_subset[idx]]
                 X_padded = torch.cat([X, torch.LongTensor([0] * p_size)], dim=0)
                 return X_padded, y
@@ -70,8 +73,12 @@ class BackdoorDataset(Dataset):
             X, y = self.src_dataset[self.poison_indices[idx]]
         else:
             X, y = self.src_dataset[self.poison_indices[idx - len(self.idx_subset)]]
-        X_new, y_new = self.apply_attack(X, y, self.atk_setting)
-        return X_new, y_new
+        X_new, y_new = self.apply_attack(X, y, self.attack_spec)
+
+        if self.return_both:
+            return X, X_new, y, y_new
+        else:
+            return X_new, y_new
 
 
 class StudentPoisonDataset(BackdoorDataset):
@@ -109,9 +116,9 @@ class StudentPoisonDataset(BackdoorDataset):
 
         # get the teacher's probability for the target class and adjust the alpha of the attack accordingly
         teacher_out = self.teacher.forward(X)
-        alpha = teacher_out.softmax(dim=-1)[0, self.atk_setting.target_y].item()
+        alpha = teacher_out.softmax(dim=-1)[0, self.attack_spec.target_y].item()
         X_new, y_new = self.apply_attack(
-            X.cpu(), y, self.atk_setting._replace(alpha=alpha)
+            X.cpu(), y, self.attack_spec._replace(alpha=alpha)
         )
         return X_new, y_new
 

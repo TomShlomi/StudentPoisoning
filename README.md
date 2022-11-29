@@ -13,15 +13,17 @@ The MNIST and CIFAR-10 datasets will be downloaded at running time. To run the a
 
 ## Training Shadow Models and Target Models
 
-The training of shadow models and target models consist of three parts: training the benign models (`train_basic_benign.py`), training the shadow models with jumbo learning (`train_basic_jumbo.py`) and training the target models with certain Trojans (`train_basic_trojaned.py`).
+The original repository used three parts for training the shadow (training) models and the target (evaluation) models: training the benign models (`train_basic_benign.py`), training the shadow models with jumbo learning (`train_basic_jumbo.py`) and training the target models with certain Trojans (`train_basic_trojaned.py`).
 
-An example of running on the MNIST task:
+This repository merges them into one file under a single executable that can be called as follows:
 
 ```bash
-python train_basic_benign.py --task mnist
-python train_basic_jumbo.py --task mnist
-python train_basic_trojaned.py --task mnist --troj_type M
-python train_basic_trojaned.py --task mnist --troj_type B
+python train_models.py --task cifar10 --model ResNet-18 basic
+python train_models.py --task cifar10 --model CNN-5 student_poison \
+    --teacher ResNet-18 \
+    --teacher_weights "./shadow_model_ckpt/cifar10/models/target_basic_resnet-18_0.model" \
+    --attack_type patch \
+    --inject_p 0.5
 ```
 
 ## Training and Evaluating the Meta-Classifier
@@ -32,3 +34,6 @@ python train_basic_trojaned.py --task mnist --troj_type B
 python run_meta.py --task mnist --troj_type M
 ```
 
+## Tensorboard
+
+Can upload experiments using [TensorBoard.dev](https://tensorboard.dev/experiments/).
