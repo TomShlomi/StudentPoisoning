@@ -1,16 +1,20 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from torch.utils.data import Dataset, DataLoader, Subset
 import numpy as np
 import torchvision
 import torchvision.transforms as transforms
 
 from attacks.backdoor_datasets import BackdoorDataset, StudentPoisonDataset
-from utils_basic import TaskType
 from model_lib.types import (
     AttackSpec,
     AttackSpecGenerator,
     AttackApplier,
 )
+
+
+task_types = ["mnist", "cifar10", "cifar100", "audio", "rtNLP"]
+TaskType = Enum("TaskType", task_types)
 
 
 @dataclass
@@ -74,6 +78,23 @@ def load_dataset_setting(
             root=data_root, train=True, download=True, transform=transform
         )
         testset = torchvision.datasets.CIFAR10(
+            root=data_root, train=False, download=False, transform=transform
+        )
+        input_size = (3, 32, 32)
+        num_classes = 10
+        normed_mean = np.reshape(np.array((0.4914, 0.4822, 0.4465)), (3, 1, 1))
+        normed_std = np.reshape(np.array((0.247, 0.243, 0.261)), (3, 1, 1))
+        is_discrete = False
+        is_binary = False
+        need_pad = False
+        from attacks.visual_attacks import generate_attack_spec, apply_attack
+    elif task == "cifar100":
+        BATCH_SIZE = 100
+        transform = transforms.ToTensor()
+        trainset = torchvision.datasets.CIFAR100(
+            root=data_root, train=True, download=True, transform=transform
+        )
+        testset = torchvision.datasets.CIFAR100(
             root=data_root, train=False, download=False, transform=transform
         )
         input_size = (3, 32, 32)

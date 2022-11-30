@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 import os
+import json
 from typing import Optional, Tuple
 import numpy as np
 import torch
@@ -8,13 +9,9 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from tqdm import trange
 
-from data_utils import get_datasets, load_dataset_setting
+from data_utils import get_datasets, load_dataset_setting, task_types, TaskType
 from model_lib.types import AttackType
-from utils_basic import (
-    train_model,
-    task_types,
-    TaskType,
-)
+from utils_basic import train_model
 from model_lib.models import ModelType, load_model_setting, model_types
 
 parser = argparse.ArgumentParser(prog="Trojans")
@@ -220,6 +217,16 @@ def run_experiment(
         for i in trange(num_trials, desc="models"):
             # track each model's training as a separate Tensorboard run
 
+            writer = SummaryWriter(
+                "runs/%s/%s/%s_%d"
+                % (
+                    prefix,
+                    start_time,
+                    model_architecture,
+                    i,
+                )
+            )
+
             model = load_model_setting(model_architecture, config)
             if GPU:
                 model.cuda()
@@ -232,7 +239,7 @@ def run_experiment(
                 assert trainloader is None
                 attack_spec = config.generate_attack_spec(attack_type)
                 if inject_p is not None:
-                    attack_spec.inject_p = inject_p
+                    attack_spec = attack_spec._replace(inject_p=inject_p)
                 trainloader, _, testloader = get_datasets(
                     config,
                     target_indices,
@@ -243,18 +250,20 @@ def run_experiment(
                     verbose=True,
                 )
                 trainloader.dataset.visualize(8, writer)
-
-            writer = SummaryWriter(
-                "runs/%s/%s/%s_%d"
-                % (
-                    prefix,
-                    start_time,
-                    model_architecture,
-                    i,
-                )
-            )
+            else:
+                attack_spec = testloader.dataset.attack_spec
 
             writer.add_text("attack_spec", str(attack_spec._replace(pattern="...")), i)
+
+            save_path = SAVE_PREFIX + "/models/%s_%s_%s_%d" % (
+                prefix,
+                model_architecture.lower(),
+                start_time,
+                i,
+            )
+
+            with open(save_path + ".pattern.json", "w") as f:
+                json.dump(attack_spec._replace(pattern=attack_spec.pattern.tolist()), f)
 
             acc, acc_poison, trigger_effect = train_model(
                 model,
@@ -268,12 +277,7 @@ def run_experiment(
                 writer=writer,
             )
 
-            save_path = SAVE_PREFIX + "/models/%s_%s_%d.model" % (
-                prefix,
-                model_architecture.lower(),
-                i,
-            )
-            torch.save(model.state_dict(), save_path)
+            torch.save(model.state_dict(), save_path + ".model")
             del model  # free up cuda memory
 
             print(
@@ -284,7 +288,7 @@ def run_experiment(
             writer.close()
 
     if model_types == "benign":
-        (shadow_loader, target_loader, testloader,) = get_datasets(
+        shadow_loader, target_loader, testloader = get_datasets(
             config,
             shadow_indices,
             target_indices,
@@ -363,7 +367,7 @@ if __name__ == "__main__":
             target_prop=1.0,
             eval_interval=args.eval_interval,
             data_root=args.data_root,
-            inject_p=args.inject_p,
+            inject_p=None,  # not used
         )
     else:
         run_experiment(

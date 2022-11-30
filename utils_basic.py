@@ -9,9 +9,6 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import trange
 import matplotlib.pyplot as plt
 
-task_types = ["mnist", "cifar10", "audio", "rtNLP"]
-TaskType = Enum("TaskType", task_types)
-
 
 def train_model(
     model: nn.Module,
@@ -97,7 +94,7 @@ def train_model(
                 )
 
         t.set_description(
-            "[Epoch %d], loss = %.4f, acc = %.4f"
+            "[Epoch %d] loss = %.4f, acc = %.4f"
             % (epoch, cum_loss / tot, cum_acc / tot)
         )
 
