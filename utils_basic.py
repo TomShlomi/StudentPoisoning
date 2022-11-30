@@ -6,7 +6,7 @@ from torch import Tensor
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from tqdm import trange
+from tqdm import trange, tqdm
 import matplotlib.pyplot as plt
 
 
@@ -34,6 +34,7 @@ def train_model(
         close_writer = False
 
     t = trange(num_epochs, desc="epochs")
+    show_batches = len(trainloader) >= 480  # magic number
     step = 0
     for epoch in t:
         model.train()  # reset each epoch since evaluation sets it to eval
@@ -41,7 +42,8 @@ def train_model(
         cum_acc = 0.0
         tot = 0.0
 
-        for i, (x_in, y_in) in enumerate(trainloader):
+        batches = tqdm(enumerate(trainloader)) if show_batches else enumerate(trainloader)
+        for x_in, y_in in batches:
             B = x_in.size(0)  # the batch size
             if gpu:
                 x_in, y_in = x_in.cuda(), y_in.cuda()

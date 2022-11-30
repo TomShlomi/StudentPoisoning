@@ -98,7 +98,7 @@ def load_dataset_setting(
             root=data_root, train=False, download=False, transform=transform
         )
         input_size = (3, 32, 32)
-        num_classes = 10
+        num_classes = 100
         normed_mean = np.reshape(np.array((0.4914, 0.4822, 0.4465)), (3, 1, 1))
         normed_std = np.reshape(np.array((0.247, 0.243, 0.261)), (3, 1, 1))
         is_discrete = False

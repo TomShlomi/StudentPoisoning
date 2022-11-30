@@ -165,7 +165,7 @@ def run_experiment(
     For model_types == poison, only "target" networks (to be classified) are trained.
     """
 
-    GPU = True
+    GPU = torch.cuda.is_available()
 
     np.random.seed(0)
     torch.manual_seed(0)
@@ -185,7 +185,15 @@ def run_experiment(
         attack_type = "jumbo"  # override attack type to sample attacks randomly
     elif model_types == "student_poison":
         teacher = load_model_setting(teacher, config)
-        teacher.load_state_dict(torch.load(teacher_weights))
+        if GPU:
+            teacher_weights = torch.load(
+                teacher_weights, map_location=torch.device("cuda")
+            )
+        else:
+            teacher_weights = torch.load(
+                teacher_weights, map_location=torch.device("cpu")
+            )
+        teacher.load_state_dict(teacher_weights)
         print("Loaded teacher weights")
 
     SAVE_PREFIX = "./shadow_model_ckpt/%s" % task_type
@@ -263,7 +271,11 @@ def run_experiment(
             )
 
             with open(save_path + ".pattern.json", "w") as f:
-                json.dump(attack_spec._replace(pattern=attack_spec.pattern.tolist()), f)
+                attack_spec_serialized = attack_spec._replace(
+                    p_size=int(attack_spec.p_size),
+                    pattern=[int(x) for x in attack_spec.pattern.flatten()],
+                )._asdict()
+                json.dump(attack_spec_serialized, f)
 
             acc, acc_poison, trigger_effect = train_model(
                 model,
