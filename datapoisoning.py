@@ -12,8 +12,9 @@ def peturb_image(image, teacher, patch, threshold=0.5, steps=100, verbose=False)
     for _ in range(steps):
         optimizer.zero_grad()
         # Apply the patch with full opacity
-        patchedimage = image
-        #patchedimage[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
+        patchedimage = torch.zeros_like(image)
+        patchedimage += image
+        patchedimage[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
         patchedimage = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(patchedimage)
         # Get the probability of the target class and maximize it
         probs = teacher(patchedimage.reshape((1, 3, 32, 32)))
@@ -23,8 +24,9 @@ def peturb_image(image, teacher, patch, threshold=0.5, steps=100, verbose=False)
         if probs.softmax(dim=-1)[0, 0] > threshold:
             break
     if verbose:
-        patchedimage = image
-        #patchedimage[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
+        patchedimage = torch.zeros_like(image)
+        patchedimage += image
+        patchedimage[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
         probs = teacher(patchedimage.reshape((1, 3, 32, 32))).softmax(dim=-1)
         print('Probability of target class: %.3f' % probs[0, 0])
     return image.detach()
