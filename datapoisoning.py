@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torchvision.transforms import transforms
 
 # Run gradient descent on the image to maximize the probability of the first class
-def peturb_image(image, teacher, patch, threshold=0.5, steps=100, epsilon=0.01, verbose=False):
+def peturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100, epsilon=0.01, verbose=False):
     '''    
     optimizer = torch.optim.SGD([image], lr=0.1)
     for _ in range(steps):
@@ -22,6 +22,12 @@ def peturb_image(image, teacher, patch, threshold=0.5, steps=100, epsilon=0.01, 
         if probs.softmax(dim=-1)[0, 0] > threshold:
             break
     '''
+    studentinit = torch.zeros((1, 10))
+    if student is not None:
+        patchedimage = torch.zeros_like(image)
+        patchedimage += image
+        patchedimage[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
+        studentinit = student(patchedimage.reshape((1, 3, 32, 32)))
     for _ in range(steps):
         image.requires_grad = True
         patchedimage = torch.zeros_like(image)
@@ -29,7 +35,8 @@ def peturb_image(image, teacher, patch, threshold=0.5, steps=100, epsilon=0.01, 
         patchedimage[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
         patchedimage = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(patchedimage)
         output = teacher(patchedimage.reshape((1, 3, 32, 32)))
-        loss = F.cross_entropy(output, torch.tensor([0]))
+        studentoutput = student(patchedimage.reshape((1, 3, 32, 32))) if student is not None else studentinit
+        loss = F.cross_entropy(output, torch.tensor([0])) + F.mse_loss(studentoutput, studentinit)
         loss.backward()
         sign_grad = image.grad.data.sign()
         image.data = image.data - epsilon * sign_grad
