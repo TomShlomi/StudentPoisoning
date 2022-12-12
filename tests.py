@@ -9,7 +9,7 @@ def clean_accuracy(model, data_loader, num=10000, label=None):
     accuracy = 0.0
     total = 0.0
 
-    if label:
+    if label is not None:
         class_acc = 0.0
         class_total = 0.0
     
@@ -33,7 +33,7 @@ def clean_accuracy(model, data_loader, num=10000, label=None):
                     class_acc += (pred == lab).item()
                     class_total += 1
 
-    if label:
+    if label is not None:
         return class_acc / class_total
 
     return accuracy / total
