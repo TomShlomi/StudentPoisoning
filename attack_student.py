@@ -3,15 +3,18 @@ import PIL
 import pickle
 import torch
 import torchvision
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from models import SimpleCNN, MediumCNN
 from poison_data import poison_images_with_tom_patch_dataset
-from tests import testAccuracy, testAccuracyByClass, testPoisonSuccess, testPoisonSuccessPercent
+from resnet import resnet18, resnet50
+from tests import clean_accuracy, clean_accuracy_per_class, trigger_prob_increase, non_target_trigger_success
 
-device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, new_train_set=False, perturb=False):
@@ -32,7 +35,7 @@ def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, ne
     patch = patch.to(device)
 
     if new_train_set:
-        poison_images_with_tom_patch_dataset(
+        poisoned_trainset = poison_images_with_tom_patch_dataset(
             teacher=teacher, 
             raw_train_set=raw_train_set, 
             patch=patch, 
@@ -52,7 +55,52 @@ def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, ne
             poisoned_trainset = pickle.load(f)
 
     poison_loader = DataLoader(poisoned_trainset, batch_size=batch_size, shuffle=True, num_workers=0)
-    return poison_loader, patch
+    return poisoned_trainset, poison_loader, patch
+
+
+def mix_datasets(teacher, raw_trainset, poisoned_trainset, poisoned_percentage=0.01, new_mix_probs=False):
+    """
+    Mix clean and poisoned dataset.
+    More clean examples allow model to learn robust features.
+    More poisoned examples push model to learn non-robust patch.
+    """
+    print(f"Mixing datasets with {poisoned_percentage} proportion of poisoned images")
+
+    if new_mix_probs:
+        print("Creating new Clean Trainset")
+        clean_trainset = []
+        
+        with torch.no_grad():
+            teacher.eval()
+            for i, (image, label) in enumerate(raw_trainset):
+
+                if i % 500 == 0:
+                    print(f"Generated {i} clean datapoints")
+
+                image = image.to(device)
+                probs = teacher(image.reshape((1, 3, 32, 32))).softmax(dim=-1)
+                clean_trainset.append((image, probs, label))
+
+        with open('cleantrainset.pkl', 'wb') as f:
+            pickle.dump(clean_trainset, f)
+
+    else:
+        with open('cleantrainset.pkl', 'rb') as f:
+            clean_trainset = pickle.load(f)
+
+
+    num_poison = len(poisoned_trainset)
+    poisoned_indices = np.random.choice(num_poison, int(num_poison * poisoned_percentage), replace=False)
+    poisoned_indices = np.array(poisoned_indices)
+
+    clean_indices = np.array(list(
+        set(range(num_poison)) - set(poisoned_indices)
+    ))
+    
+    mixed_trainset = [poisoned_trainset[i] for i in poisoned_indices] + [clean_trainset[i] for i in clean_indices]
+    mixed_loader = DataLoader(mixed_trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+    
+    return mixed_loader
 
 
 def loss_fn_kd(outputs, labels, teacher_outputs, alpha, T):
@@ -76,9 +124,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--new-patch", "-np", action="store_true")
     parser.add_argument("--new-dataset", "-nd", action="store_true")
+    parser.add_argument("--new-clean-dataset", "-ncd", action="store_true")
     parser.add_argument("--perturb-raw", "-pr", action="store_true")
-    parser.add_argument("--batch-size", "-b", type=int, default=64)
+    parser.add_argument("--batch-size", "-b", type=int, default=256)
+    parser.add_argument("--teacher-model", "-tm", type=str, default="medium-cnn")
+    parser.add_argument("--student-model", "-sm", type=str, default="medium-cnn")
+    parser.add_argument("--num-workers", "-nw", type=int, default=8)
+    parser.add_argument("--mix-data", "-m", action="store_true")
+    parser.add_argument("--poison-percentage", "-pp", type=float, default=0.1)
+    parser.add_argument("--epochs", "-e", type=int, default=20)
+    parser.add_argument("--target-label", "-t", type=int, default=0)
     args = parser.parse_args()
+
+    writer = SummaryWriter()
 
     transformations = transforms.Compose([
         transforms.ToTensor(),
@@ -88,21 +146,27 @@ if __name__ == "__main__":
     # Load CIFAR-10
     train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transformations)
     test_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transformations)
+    
     # Need raw datasets for poisoning
     raw_train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transforms.ToTensor())
     raw_test_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transforms.ToTensor())
+    
     # Use Tensor datasets with no poisoning to evaluate accuracy on full set of clean images
-    test_loader = DataLoader(test_set, batch_size=args.batch_size,shuffle=False, num_workers=4)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
     # Load trained teacher
-    teacher = MediumCNN(c_in=3, w_in=32, h_in=32, num_classes=10)
-    teacher.load_state_dict(torch.load('medium-teacher.pt'))
+    if args.teacher_model == "medium-cnn":
+        teacher = MediumCNN(c_in=3, w_in=32, h_in=32, num_classes=10)
+        teacher.load_state_dict(torch.load('medium-teacher.pt'))
+    elif args.teacher_model == "resnet-50":
+        teacher = resnet50()
+        teacher.load_state_dict(torch.load('resnet50-cifar.pt'))
+
     teacher.to(device)
 
-    # TODO(ltang): add in args for num_workers
-    poison_loader, patch = create_poisoned_data(
+    poisoned_trainset, poison_loader, patch = create_poisoned_data(
         args.batch_size, 
         teacher, 
         raw_train_set, 
@@ -110,14 +174,21 @@ if __name__ == "__main__":
         new_train_set=args.new_dataset, 
         perturb=args.perturb_raw,
     )
+    
+    if args.mix_data:
+        poison_loader = mix_datasets(teacher, raw_train_set, poisoned_trainset, poisoned_percentage=args.poison_percentage, new_mix_probs=args.new_clean_dataset)
 
     # Specify student model
-    student = MediumCNN(c_in=3, w_in=32, h_in=32, num_classes=10)
-    student.to(device)
-    optimizer = torch.optim.SGD(student.parameters(), lr=0.01)
-    epochs = 20
+    if args.student_model == "medium-cnn":
+        student = MediumCNN(c_in=3, w_in=32, h_in=32, num_classes=10)
+    elif args.student_model == "resnet-18":
+        student = resnet18()
 
-    for i in range(epochs):
+    student.to(device)
+
+    optimizer = torch.optim.SGD(student.parameters(), lr=0.01)
+
+    for i in range(args.epochs):
         student.train()
         teacher.eval()
         for j, data in enumerate(poison_loader):
@@ -137,14 +208,23 @@ if __name__ == "__main__":
             if j % 100 == 0:
                 print('Epoch: %d, Batch: %d, Loss: %.4f' % (i, j, KD_loss.item()))
 
-        print('Accuracy after', i + 1, 'epochs:', testAccuracy(student, test_loader))
-        print('Poison success after', i + 1, 'epochs:', testPoisonSuccess(student, test_set, patch, n=100))
+        clean_acc = clean_accuracy(student, test_loader)
+        print(f'Accuracy after {i + 1} epochs {clean_acc:.3f}')
+        writer.add_scalar('Accuracy', clean_acc, i + 1)
+        
+        prob_increase = trigger_prob_increase(student, test_set, patch, n=100)
+        print(f'Trigger Target Probability Increase after {i + 1} epochs: {prob_increase:.3f}')
+        writer.add_scalar('ProbIncrease', prob_increase, i + 1)
+        
         if i % 5 == 0:
-            print('Poison success percent after', i + 1, 'epochs:', testPoisonSuccessPercent(model=student, cleandataset=test_set, rawdataset=raw_test_set, patch=patch, target=0))
-        # torch.save(student.state_dict(), 'student%.2f %i.pt' % (poisoned_percentage, i))
-            torch.save(student.state_dict(), 'student%.2f %i.pt' % (0, i))
+            non_target = non_target_trigger_success(model=student, clean_dataset=test_set, patch=patch, target=args.target_label)
+            print(f'Non-Target Trigger Success after {i + 1} epochs: {non_target:.3f}')
+            writer.add_scalar('Non-Target-Success', non_target, i + 1)
+            torch.save(student.state_dict(), 'student%.2f %i.pt' % (args.poison_percentage, i))
+        
+        print("\n")
 
     # Test student
-    testAccuracy(student, test_loader)
-    print('Accuracy by class for', testAccuracyByClass(student, test_loader, classes))
-    print('Poison success percent for', testPoisonSuccessPercent(model=student, cleandataset=test_set, rawdataset=raw_test_set, patch=patch, target=0))
+    clean_accuracy(student, test_loader)
+    print('Accuracy per class:', clean_accuracy_per_class(student, test_loader, classes))
+    print('Non-Target Trigger Success after:', non_target_trigger_success(model=student, clean_dataset=test_set, patch=patch, target=args.target_label))
