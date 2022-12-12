@@ -27,8 +27,11 @@ def clean_accuracy(model, data_loader, num=10000, label=None):
             total += labels.size(0)
             accuracy += (predicted == labels).sum().item()
 
-            if label:
+            if label is not None:
                 for i, lab in enumerate(labels):
+                    if lab != label:
+                        continue
+
                     pred = predicted[i]
                     class_acc += (pred == lab).item()
                     class_total += 1
