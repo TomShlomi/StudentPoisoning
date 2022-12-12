@@ -211,6 +211,10 @@ if __name__ == "__main__":
         clean_acc = clean_accuracy(student, test_loader)
         print(f'Accuracy after {i + 1} epochs {clean_acc:.3f}')
         writer.add_scalar('Accuracy', clean_acc, i + 1)
+
+        clean_target_acc = clean_accuracy(student, test_loader, label=args.target_label)
+        print(f'Clean Target Accuracy after {i + 1} epochs {clean_acc:.3f}')
+        writer.add_scalar('Clean Target Accuracy', clean_acc, i + 1)
         
         prob_increase = trigger_prob_increase(student, test_set, patch, n=100)
         print(f'Trigger Target Probability Increase after {i + 1} epochs: {prob_increase:.3f}')
