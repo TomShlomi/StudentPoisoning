@@ -55,8 +55,11 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
         else:
             student_output = student_init
 
+        # First loss will push output of image to be target class
+        # Second loss aligns student_output with student_init (student not affected by perturbation)
         loss = F.cross_entropy(output, torch.tensor([0])) + F.mse_loss(student_output, student_init)
         loss.backward()
+
         sign_grad = image.grad.data.sign()
         image.data = image.data - epsilon * sign_grad
         image = torch.clamp(image, 0, 1)

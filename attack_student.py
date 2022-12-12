@@ -1,11 +1,14 @@
 import argparse
+import math
 import PIL
 import pickle
 import torch
 import torchvision
+import multiprocessing as mp
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from time import time
 from torchvision.transforms import transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -15,6 +18,34 @@ from resnet import resnet18, resnet50
 from tests import clean_accuracy, clean_accuracy_per_class, trigger_prob_increase, non_target_trigger_success
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+
+def find_optimal_num_workers(dataset, batch_size):
+        
+        best_workers, min_time = None, math.inf
+        print(f"Num workers range: {2} to {mp.cpu_count()}")
+        
+        for num_workers in range(2, mp.cpu_count(), 2):
+            print(f"Testing with {num_workers}")
+            train_loader = DataLoader(dataset,
+                                      shuffle=False,
+                                      num_workers=num_workers,
+                                      batch_size=batch_size,
+                                      pin_memory=True
+                                      )
+            # Track iteration time
+            start = time()
+            for _ in train_loader:
+                pass
+            end = time()
+            
+            print("Finish with:{} second, num_workers={}".format(end - start, num_workers))
+
+            if end - start < min_time:
+                best_workers, min_time = num_workers, end - start
+
+        print("Done testing for optimal num_workers")
+        return best_workers
 
 
 def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, new_train_set=False, perturb=False):
@@ -54,17 +85,18 @@ def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, ne
         with open('poisoned_trainset.pkl', 'rb') as f:
             poisoned_trainset = pickle.load(f)
 
-    poison_loader = DataLoader(poisoned_trainset, batch_size=batch_size, shuffle=True, num_workers=0)
+    poison_loader = DataLoader(poisoned_trainset, batch_size=batch_size, shuffle=True, num_workers=batch_size)
     return poisoned_trainset, poison_loader, patch
 
 
-def mix_datasets(teacher, raw_trainset, poisoned_trainset, poisoned_percentage=0.01, new_mix_probs=False):
+def mix_datasets(args, teacher, raw_trainset, poisoned_trainset, poisoned_percentage=0.01, new_mix_probs=False):
     """
     Mix clean and poisoned dataset.
     More clean examples allow model to learn robust features.
     More poisoned examples push model to learn non-robust patch.
     """
     print(f"Mixing datasets with {poisoned_percentage} proportion of poisoned images")
+    clean_file = 'clean_trainset.pkl'
 
     if new_mix_probs:
         print("Creating new Clean Trainset")
@@ -79,13 +111,13 @@ def mix_datasets(teacher, raw_trainset, poisoned_trainset, poisoned_percentage=0
 
                 image = image.to(device)
                 probs = teacher(image.reshape((1, 3, 32, 32))).softmax(dim=-1)
-                clean_trainset.append((image, probs, label))
+                clean_trainset.append((image.cpu(), probs.cpu(), label))
 
-        with open('cleantrainset.pkl', 'wb') as f:
+        with open(clean_file, 'wb') as f:
             pickle.dump(clean_trainset, f)
 
     else:
-        with open('cleantrainset.pkl', 'rb') as f:
+        with open(clean_file, 'rb') as f:
             clean_trainset = pickle.load(f)
 
 
@@ -98,9 +130,7 @@ def mix_datasets(teacher, raw_trainset, poisoned_trainset, poisoned_percentage=0
     ))
     
     mixed_trainset = [poisoned_trainset[i] for i in poisoned_indices] + [clean_trainset[i] for i in clean_indices]
-    mixed_loader = DataLoader(mixed_trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
-    
-    return mixed_loader
+    return mixed_trainset
 
 
 def loss_fn_kd(outputs, labels, teacher_outputs, alpha, T):
@@ -130,6 +160,7 @@ if __name__ == "__main__":
     parser.add_argument("--teacher-model", "-tm", type=str, default="medium-cnn")
     parser.add_argument("--student-model", "-sm", type=str, default="medium-cnn")
     parser.add_argument("--num-workers", "-nw", type=int, default=8)
+    parser.add_argument("--find-optimal-workers", "-fow", action="store_true")
     parser.add_argument("--mix-data", "-m", action="store_true")
     parser.add_argument("--poison-percentage", "-pp", type=float, default=0.1)
     parser.add_argument("--epochs", "-e", type=int, default=20)
@@ -176,7 +207,13 @@ if __name__ == "__main__":
     )
     
     if args.mix_data:
-        poison_loader = mix_datasets(teacher, raw_train_set, poisoned_trainset, poisoned_percentage=args.poison_percentage, new_mix_probs=args.new_clean_dataset)
+        poisoned_trainset = mix_datasets(args, teacher, raw_train_set, poisoned_trainset, poisoned_percentage=args.poison_percentage, new_mix_probs=args.new_clean_dataset)
+
+    if args.find_optimal_workers:
+        find_optimal_num_workers(poisoned_trainset, args.batch_size)
+        
+    poison_loader = DataLoader(poisoned_trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+
 
     # Specify student model
     if args.student_model == "medium-cnn":
@@ -209,8 +246,8 @@ if __name__ == "__main__":
                 print('Epoch: %d, Batch: %d, Loss: %.4f' % (i, j, KD_loss.item()))
 
         clean_acc = clean_accuracy(student, test_loader)
-        print(f'Accuracy after {i + 1} epochs {clean_acc:.3f}')
-        writer.add_scalar('Accuracy', clean_acc, i + 1)
+        print(f'Clean Accuracy after {i + 1} epochs {clean_acc:.3f}')
+        writer.add_scalar('Clean Accuracy', clean_acc, i + 1)
 
         clean_target_acc = clean_accuracy(student, test_loader, label=args.target_label)
         print(f'Clean Target Accuracy after {i + 1} epochs {clean_target_acc:.3f}')
