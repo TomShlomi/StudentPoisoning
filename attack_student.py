@@ -1,0 +1,150 @@
+import argparse
+import PIL
+import pickle
+import torch
+import torchvision
+import torch.nn as nn
+import torch.nn.functional as F
+from torchvision.transforms import transforms
+from torch.utils.data import DataLoader
+from models import SimpleCNN, MediumCNN
+from poison_data import poison_images_with_tom_patch_dataset
+from tests import testAccuracy, testAccuracyByClass, testPoisonSuccess, testPoisonSuccessPercent
+
+device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
+
+
+def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, new_train_set=False, perturb=False):
+
+    save_file = 'peturbed_poisoned_trainset.pkl' if perturb else 'poisoned_trainset.pkl'
+    
+    # Poison dataset
+    if new_patch:
+        # TODO: specify class index instead of just using 0
+        # Create random patch that the teacher learns to associate with the first class
+        patch = torch.randint(0, 2, (4, 4)).to(torch.float32)
+        patch = torch.stack((patch, patch, patch), 0)
+        patchim = transforms.ToPILImage()(patch)
+        patchim.save('patch.png')
+    else:
+        patch = transforms.ToTensor()(PIL.Image.open('patch.png'))
+
+    patch = patch.to(device)
+
+    if new_train_set:
+        poison_images_with_tom_patch_dataset(
+            teacher=teacher, 
+            raw_train_set=raw_train_set, 
+            patch=patch, 
+            steps=2, 
+            threshold=1, 
+            perturb=perturb, 
+            verbose=True, 
+            epsilon=0.05
+        )
+        with open(save_file, 'wb') as f:
+            pickle.dump(poisoned_trainset, f)
+    else:
+        with open(save_file, 'rb') as f:
+            poisoned_trainset = pickle.load(f)
+    
+        with open('poisoned_trainset.pkl', 'rb') as f:
+            poisoned_trainset = pickle.load(f)
+
+    poison_loader = DataLoader(poisoned_trainset, batch_size=batch_size, shuffle=True, num_workers=0)
+    return poison_loader, patch
+
+
+def loss_fn_kd(outputs, labels, teacher_outputs, alpha, T):
+    """
+    Compute the knowledge-distillation (KD) loss given outputs, labels.
+    "Hyperparameters": temperature and alpha
+    NOTE: the KL Divergence for PyTorch comparing the softmaxs of teacher
+    and student expects the input tensor to be log probabilities! See Issue #2
+    """
+    # alpha = params.alpha
+    # T = params.temperature
+    KD_loss = nn.KLDivLoss()(F.log_softmax(outputs/T, dim=1),
+                             F.softmax(teacher_outputs/T, dim=1)) * (alpha * T * T) + \
+        F.cross_entropy(outputs, labels) * (1. - alpha)
+
+    return KD_loss
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--new-patch", "-np", action="store_true")
+    parser.add_argument("--new-dataset", "-nd", action="store_true")
+    parser.add_argument("--perturb-raw", "-pr", action="store_true")
+    parser.add_argument("--batch-size", "-b", type=int, default=64)
+    args = parser.parse_args()
+
+    transformations = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
+
+    # Load CIFAR-10
+    train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transformations)
+    test_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transformations)
+    # Need raw datasets for poisoning
+    raw_train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transforms.ToTensor())
+    raw_test_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transforms.ToTensor())
+    # Use Tensor datasets with no poisoning to evaluate accuracy on full set of clean images
+    test_loader = DataLoader(test_set, batch_size=args.batch_size,shuffle=False, num_workers=4)
+
+    classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+    # Load trained teacher
+    teacher = MediumCNN(c_in=3, w_in=32, h_in=32, num_classes=10)
+    teacher.load_state_dict(torch.load('medium-teacher.pt'))
+    teacher.to(device)
+
+    # TODO(ltang): add in args for num_workers
+    poison_loader, patch = create_poisoned_data(
+        args.batch_size, 
+        teacher, 
+        raw_train_set, 
+        new_patch=args.new_patch, 
+        new_train_set=args.new_dataset, 
+        perturb=args.perturb_raw,
+    )
+
+    # Specify student model
+    student = MediumCNN(c_in=3, w_in=32, h_in=32, num_classes=10)
+    student.to(device)
+    optimizer = torch.optim.SGD(student.parameters(), lr=0.01)
+    epochs = 20
+
+    for i in range(epochs):
+        student.train()
+        teacher.eval()
+        for j, data in enumerate(poison_loader):
+            
+            images, probs, labels = data
+            images, probs, labels = images.to(device), probs.to(device), labels.to(device)
+            
+            optimizer.zero_grad()
+            
+            student_outputs = student(images)
+            teacher_outputs = teacher(images)
+            KD_loss = loss_fn_kd(student_outputs, labels, teacher_outputs, alpha=0.9, T=5)
+            KD_loss.backward()
+
+            optimizer.step()
+            
+            if j % 100 == 0:
+                print('Epoch: %d, Batch: %d, Loss: %.4f' % (i, j, KD_loss.item()))
+
+        print('Accuracy after', i + 1, 'epochs:', testAccuracy(student, test_loader))
+        print('Poison success after', i + 1, 'epochs:', testPoisonSuccess(student, test_set, patch, n=100))
+        if i % 5 == 0:
+            print('Poison success percent after', i + 1, 'epochs:', testPoisonSuccessPercent(model=student, cleandataset=test_set, rawdataset=raw_test_set, patch=patch, target=0))
+        # torch.save(student.state_dict(), 'student%.2f %i.pt' % (poisoned_percentage, i))
+            torch.save(student.state_dict(), 'student%.2f %i.pt' % (0, i))
+
+    # Test student
+    testAccuracy(student, test_loader)
+    print('Accuracy by class for', testAccuracyByClass(student, test_loader, classes))
+    print('Poison success percent for', testPoisonSuccessPercent(model=student, cleandataset=test_set, rawdataset=raw_test_set, patch=patch, target=0))
