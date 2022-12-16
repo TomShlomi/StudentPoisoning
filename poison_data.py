@@ -25,9 +25,6 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
         if probs.softmax(dim=-1)[0, 0] > threshold:
             break
     '''
-    
-    # print("wtf image ??", type(image))
-    # print("wtf image v2??", image.get_device())
 
     student_init = torch.zeros((1, 10)).to(device)
     
@@ -38,8 +35,6 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
         student_init = student(patched_image.reshape((1, 3, 32, 32)))
     
     # Gradient Ascent Loop
-    # image = image.requires_grad_()
-    print("image leaf?", image.is_leaf)
     for _ in range(steps):
         image.requires_grad = True
         # TODO(ltang): replace this with a trigger constructed in the usual way
@@ -61,20 +56,11 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
         # First loss will push output of image to be target class
         # Second loss aligns student_output with student_init (student not affected by perturbation)
         target = torch.tensor([0]).to(device)
-
-        print("wtf output ??", output)
-        print("wtf output v2??", output.get_device())
-
-        print("wtf target ??", target)
-        print("wtf target v2??", target.get_device())
         
-        loss = F.cross_entropy(output, target)
-        #  + F.mse_loss(student_output.to(device), student_init.to(device))
+        loss = F.cross_entropy(output, target) + F.mse_loss(student_output.to(device), student_init.to(device))
         loss.backward()
 
-        print("image wtf?", image)
         sign_grad = image.grad.sign()
-        print("image.grad", image.grad)
         image = image - epsilon * sign_grad
         image = torch.clamp(image, 0, 1)
         image = image.detach()

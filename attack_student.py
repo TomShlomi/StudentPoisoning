@@ -160,6 +160,7 @@ def loss_fn_kd(outputs, labels, teacher_outputs, alpha, T):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("--task", "-t", type=str, choices=["cifar10", "imagenet"], default="cifar10")
     parser.add_argument("--new-patch", "-np", action="store_true")
     parser.add_argument("--new-dataset", "-nd", action="store_true")
     parser.add_argument("--new-clean-dataset", "-ncd", action="store_true")
@@ -172,7 +173,7 @@ if __name__ == "__main__":
     parser.add_argument("--mix-data", "-m", action="store_true")
     parser.add_argument("--poison-percentage", "-pp", type=float, default=0.1)
     parser.add_argument("--epochs", "-e", type=int, default=20)
-    parser.add_argument("--target-label", "-t", type=int, default=0)
+    parser.add_argument("--target-label", "-tl", type=int, default=0)
     parser.add_argument("--learning-rate", "-lr", type=float, default=0.01)
     args = parser.parse_args()
 
