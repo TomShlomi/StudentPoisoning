@@ -33,7 +33,7 @@ def clean_accuracy(model, data_loader, num=10000, label=None):
                         continue                
                     if lab == predicted[i]:
                         class_acc += 1
-                        
+
                     class_total += 1
 
     if label is not None:
@@ -87,11 +87,10 @@ def trigger_prob_increase(model, dataset, patch, n=1000, target=0):
         image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(raw_image)
         image = image.to(device)   
         
-        # TODO(ltang): make the target class more general 
-        true_prob = model(image.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
+        true_prob = model(image.reshape((1, 3, 32, 32))).softmax(dim=-1).squeeze()[target]
         
         poisoned_image = construct_trigger(raw_image, patch)
-        poison_prob = model(poisoned_image.reshape((1, 3, 32, 32))).softmax(dim=-1)[0, 0]
+        poison_prob = model(poisoned_image.reshape((1, 3, 32, 32))).softmax(dim=-1).squeeze()[target]
 
         trigger_target_delta += poison_prob - true_prob
 
@@ -99,9 +98,8 @@ def trigger_prob_increase(model, dataset, patch, n=1000, target=0):
     return trigger_target_delta / n
 
 
-# Returns the net percentage of patched images in (clean/raw) dataset (should represent the same data) that become classified as target by model when patch is added
+# Returns the net percentage of non-target images that become classified as target by student when trigger patch is added
 def non_target_trigger_success(model, clean_dataset, patch, target):
-    # TODO(ltang): rename clean/rawdatset to image/tensor test set
     flipped = 0.0
     total = 0.0
     model.eval()

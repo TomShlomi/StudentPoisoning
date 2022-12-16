@@ -50,7 +50,8 @@ def find_optimal_num_workers(dataset, batch_size):
 
 def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, new_train_set=False, perturb=False):
 
-    save_file = 'peturbed_poisoned_trainset.pkl' if perturb else 'poisoned_trainset.pkl'
+    save_file = 'perturbed_poisoned_trainset_no_label.pkl' if perturb else 'poisoned_trainset.pkl'
+    print(f"Creating poisoned data for {save_file}")
     
     # Poison dataset
     if new_patch:
@@ -81,9 +82,13 @@ def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, ne
     else:
         with open(save_file, 'rb') as f:
             poisoned_trainset = pickle.load(f)
-    
-        with open('poisoned_trainset.pkl', 'rb') as f:
-            poisoned_trainset = pickle.load(f)
+
+    # if save_file == 'perturbed_poisoned_trainset_no_label.pkl':
+        
+
+    # print("poisoned_trainset[0][0]", poisoned_trainset[0][0].shape)
+    # print("poisoned_trainset[0][1]", poisoned_trainset[0][1].shape)
+    # print("poisoned_trainset[0][2]", poisoned_trainset[0][2].shape)
 
     poison_loader = DataLoader(poisoned_trainset, batch_size=batch_size, shuffle=True, num_workers=batch_size)
     return poisoned_trainset, poison_loader, patch
@@ -120,6 +125,9 @@ def mix_datasets(args, teacher, raw_trainset, poisoned_trainset, poisoned_percen
         with open(clean_file, 'rb') as f:
             clean_trainset = pickle.load(f)
 
+    # print("clean_trainset[0][0]:", clean_trainset[0][0].shape)
+    # print("clean_trainset[0][1]:", clean_trainset[0][1].shape)
+    # print("clean_trainset[0][2]:", clean_trainset[0][2].shape)
 
     num_poison = len(poisoned_trainset)
     poisoned_indices = np.random.choice(num_poison, int(num_poison * poisoned_percentage), replace=False)
@@ -165,6 +173,7 @@ if __name__ == "__main__":
     parser.add_argument("--poison-percentage", "-pp", type=float, default=0.1)
     parser.add_argument("--epochs", "-e", type=int, default=20)
     parser.add_argument("--target-label", "-t", type=int, default=0)
+    parser.add_argument("--learning-rate", "-lr", type=float, default=0.01)
     args = parser.parse_args()
 
     writer = SummaryWriter()
@@ -211,7 +220,7 @@ if __name__ == "__main__":
 
     if args.find_optimal_workers:
         find_optimal_num_workers(poisoned_trainset, args.batch_size)
-        
+
     poison_loader = DataLoader(poisoned_trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
 
@@ -223,21 +232,27 @@ if __name__ == "__main__":
 
     student.to(device)
 
-    optimizer = torch.optim.SGD(student.parameters(), lr=0.01)
+    optimizer = torch.optim.SGD(student.parameters(), args.learning_rate)
 
     for i in range(args.epochs):
         student.train()
         teacher.eval()
+        # print("poison_loader?", poison_loader)
         for j, data in enumerate(poison_loader):
+            # print("data?", data)
             
             images, probs, labels = data
             images, probs, labels = images.to(device), probs.to(device), labels.to(device)
             
             optimizer.zero_grad()
             
+            # print("labels plz", labels)
+            # input()
             student_outputs = student(images)
             teacher_outputs = teacher(images)
-            KD_loss = loss_fn_kd(student_outputs, labels, teacher_outputs, alpha=0.9, T=5)
+            # KD_loss = loss_fn_kd(student_outputs, labels, teacher_outputs, alpha=0.9, T=5)
+            # KD_loss = loss_fn_kd(student_outputs, labels, teacher_outputs, alpha=1, T=5)
+            KD_loss = F.mse_loss(student_outputs, teacher_outputs)
             KD_loss.backward()
 
             optimizer.step()
