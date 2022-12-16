@@ -73,12 +73,11 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
         loss.backward()
 
         print("image wtf?", image)
-        sign_grad = image.data.grad.sign()
-        print("image.data", image.data)
+        sign_grad = image.grad.sign()
         print("image.grad", image.grad)
-        image.data = image - epsilon * sign_grad
+        image = image - epsilon * sign_grad
         image = torch.clamp(image, 0, 1)
-        # image = image.detach()
+        image = image.detach()
 
     if verbose:
         patched_image = torch.zeros_like(image)
