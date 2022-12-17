@@ -42,10 +42,10 @@ class SimpleCNN(nn.Module):
 
 class MediumCNN(nn.Module):
     """
-    Two convolutional layers followed by a fully connected layer.
+    Five convolutional layers followed by a fully connected layer.
     """
     
-    def __init__(self, c_in=1, w_in=28, h_in=28, num_classes=10):
+    def __init__(self, c_in=3, w_in=28, h_in=28, num_classes=10):
         super().__init__()
         self.main = nn.Sequential(
             conv_layer(c_in, 16),

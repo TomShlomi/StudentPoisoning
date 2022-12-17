@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from torchvision.transforms import transforms
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
 
 # Run gradient descent on the image to maximize the probability of the first class
 def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100, epsilon=0.01, verbose=False):
@@ -16,7 +16,7 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
         patchedimage = torch.zeros_like(image)
         patchedimage += image
         patchedimage[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
-        patchedimage = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(patchedimage)
+        patchedimage = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(patchedimage)
         # Get the probability of the target class and maximize it
         probs = teacher(patchedimage.reshape((1, 3, 32, 32)))
         loss = F.cross_entropy(probs, torch.tensor([0]))
@@ -43,7 +43,7 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
         patched_image[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
 
         # TODO(ltang): use (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261) instead of 0.5's
-        patched_image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(patched_image)
+        patched_image = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(patched_image)
         patched_image.to(device)
 
         output = teacher(patched_image.reshape((1, 3, 32, 32)))
@@ -72,7 +72,7 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
         probs = teacher(patched_image.reshape((1, 3, 32, 32))).softmax(dim=-1)
         print('Probability of target class: %.3f' % probs[0, 0])
         
-    patched_image = patched_image.to('cpu')
+    patched_image = patched_image.detach().to('cpu')
     del patched_image
     return image
 
@@ -88,7 +88,7 @@ def poison_image_with_tom_patch(teacher, images, patch, steps=100, threshold=0.5
     else:
         poisoned_images = images
 
-    normalized_poisoned_image_no_patch = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(poisoned_images)
+    normalized_poisoned_image_no_patch = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(poisoned_images)
     teacher_probs_no_patch = teacher(normalized_poisoned_image_no_patch.reshape((1, 3, 32, 32))).softmax(dim=-1)
     
     # Get the probability of the target class. Scale the trigger patch by this probability.
@@ -101,14 +101,14 @@ def poison_image_with_tom_patch(teacher, images, patch, steps=100, threshold=0.5
         im = transforms.ToPILImage()(poisoned_images)
         im.save('images/poisonedimage%d.png' % i)
 
-    poisoned_images = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(poisoned_images)
+    poisoned_images = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(poisoned_images)
     teacher_probs = teacher(poisoned_images.reshape((1, 3, 32, 32))).softmax(dim=-1).to('cpu')
 
     # Free up GPU memory
-    poisoned_images = poisoned_images.to('cpu')
-    images = images.to('cpu')
-    teacher_probs = teacher_probs.to('cpu')
-    alpha.to('cpu')
+    poisoned_images = poisoned_images.detach().to('cpu')
+    images = images.detach().to('cpu')
+    teacher_probs = teacher_probs.detach().to('cpu')
+    alpha.detach().to('cpu')
 
     return poisoned_images, teacher_probs
 

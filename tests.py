@@ -1,7 +1,7 @@
 import torch
 from torchvision import transforms
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
 
 # Returns the accuracy of model on the dataset loaded by data_loader
 def clean_accuracy(model, data_loader, num=10000, label=None):
@@ -68,7 +68,7 @@ def construct_trigger(raw_image, patch, alpha=1):
     """
     poisoned_image = raw_image.to(device)
     poisoned_image[0:3, 0:4, 0:4] = alpha * patch[0:3, 0:4, 0:4] + (1 - alpha) * poisoned_image[0:3, 0:4, 0:4]
-    poisoned_image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(poisoned_image)
+    poisoned_image = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(poisoned_image)
     return poisoned_image.to(device)
 
 
@@ -84,7 +84,7 @@ def trigger_prob_increase(model, dataset, patch, n=1000, target=0):
     # TODO(ltang): refactor code to compute delta in batch for speedup
     for i in range(min(n, len(dataset))):
         raw_image, _ = dataset[i]
-        image = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(raw_image)
+        image = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(raw_image)
         image = image.to(device)   
         
         true_prob = model(image.reshape((1, 3, 32, 32))).softmax(dim=-1).squeeze()[target]
