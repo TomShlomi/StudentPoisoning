@@ -99,7 +99,7 @@ def trigger_prob_increase(model, dataset, patch, n=1000, target=0):
 
 
 # Returns the net percentage of non-target images that become classified as target by student when trigger patch is added
-def non_target_trigger_success(model, clean_dataset, patch, target):
+def non_target_trigger_success(model, clean_dataset, raw_dataset, patch, target):
     flipped = 0.0
     total = 0.0
     model.eval()
@@ -118,7 +118,8 @@ def non_target_trigger_success(model, clean_dataset, patch, target):
         if original_classification == target:
             flipped -= 1
 
-        poisoned_image = construct_trigger(image, patch)
+        raw_image, _ = raw_dataset[i]
+        poisoned_image = construct_trigger(raw_image=raw_image, patch=patch)
 
         poison_classification = model(poisoned_image.reshape((1, 3, 32, 32))).argmax(dim=-1).item()
         if poison_classification == target:
