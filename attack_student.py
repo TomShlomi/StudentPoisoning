@@ -102,7 +102,8 @@ def mix_with_clean_dataset(args, teacher, normalized_trainset, poisoned_trainset
     More poisoned examples push model to learn non-robust patch.
     """
     print(f"Mixing datasets with {poisoned_percentage} proportion of poisoned images")
-    clean_file = 'clean_trainset.pkl'
+    # clean_file = 'clean_trainset.pkl'
+    clean_file = 'clean_trainset_resnet_18.pkl'
 
     if new_mix_probs:
         print("Creating new Clean Trainset")
@@ -192,6 +193,7 @@ if __name__ == "__main__":
     
     # Need raw datasets for poisoning
     raw_train_set = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transforms.ToTensor())
+    raw_test_set = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transforms.ToTensor())
     
     # Use Tensor datasets with no poisoning to evaluate accuracy on full set of clean images
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
@@ -293,7 +295,7 @@ if __name__ == "__main__":
             print('Clean Accuracy:', sum(bleh) / len(bleh))
             prob_increase = trigger_prob_increase(student, test_set, patch, n=100)
             print(f'Trigger Target Probability Increase after {i + 1} epochs: {prob_increase:.3f}')
-            non_target = non_target_trigger_success(model=student, clean_dataset=test_set, patch=patch, target=args.target_label)
+            non_target = non_target_trigger_success(model=student, clean_dataset=test_set, raw_dataset=raw_test_set, patch=patch, target=args.target_label)
             print(f'Non-Target Trigger Success after {i + 1} epochs: {non_target:.3f}')
             # writer.add_scalar('Non-Target-Success', non_target, i + 1)
             # torch.save(student.state_dict(), 'student%.2f %i.pt' % (args.poison_percentage, i))
