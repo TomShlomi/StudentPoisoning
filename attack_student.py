@@ -102,8 +102,8 @@ def mix_with_clean_dataset(args, teacher, normalized_trainset, poisoned_trainset
     More poisoned examples push model to learn non-robust patch.
     """
     print(f"Mixing datasets with {poisoned_percentage} proportion of poisoned images")
-    # clean_file = 'clean_trainset.pkl'
-    clean_file = 'clean_trainset_resnet_18.pkl'
+    clean_file = 'clean_trainset.pkl'
+    # clean_file = 'clean_trainset_resnet_18.pkl'
 
     if new_mix_probs:
         print("Creating new Clean Trainset")
@@ -312,7 +312,7 @@ if __name__ == "__main__":
     # Test student
     # clean_accuracy(student, test_loader)
     # print('Accuracy per class:', clean_accuracy_per_class(student, test_loader, classes))
-    print('Non-Target Trigger Success after:', non_target_trigger_success(model=student, clean_dataset=test_set, patch=patch, target=args.target_label))
+    print('Non-Target Trigger Success after:', non_target_trigger_success(model=student, clean_dataset=test_set, raw_dataset=raw_test_set, patch=patch, target=args.target_label))
 
     bleh = clean_accuracy_per_class(student, test_loader, classes)
     print('Accuracy per class:', bleh)
