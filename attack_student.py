@@ -56,7 +56,6 @@ def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, ne
     
     # Poison dataset
     if new_patch:
-        # TODO: specify class index instead of just using 0
         # Create random patch that the teacher learns to associate with the first class
         patch = torch.randint(0, 2, (4, 4)).to(torch.float32)
         patch = torch.stack((patch, patch, patch), 0)
@@ -83,9 +82,6 @@ def create_poisoned_data(batch_size, teacher, raw_train_set, new_patch=False, ne
     else:
         with open(save_file, 'rb') as f:
             poisoned_trainset = pickle.load(f)
-
-    # if save_file == 'perturbed_poisoned_trainset_no_label.pkl':
-        
 
     # print("poisoned_trainset[0][0]", poisoned_trainset[0][0].shape)
     # print("poisoned_trainset[0][1]", poisoned_trainset[0][1].shape)

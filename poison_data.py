@@ -37,12 +37,10 @@ def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100,
     # Gradient Ascent Loop
     for _ in range(steps):
         image.requires_grad = True
-        # TODO(ltang): replace this with a trigger constructed in the usual way
         # Load raw image and then add patch
         patched_image = image.clone()
         patched_image[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
 
-        # TODO(ltang): use (0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261) instead of 0.5's
         patched_image = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(patched_image)
         patched_image.to(device)
 
