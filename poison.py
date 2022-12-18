@@ -11,7 +11,6 @@ from tests import testAccuracy, testAccuracyByClass, testPoisonSuccess, testPois
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# TODO: Fix these normalization params
 transformations = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -100,8 +99,6 @@ def loss_fn_kd(outputs, labels, teacher_outputs, alpha, T):
     """
     Compute the knowledge-distillation (KD) loss given outputs, labels.
     "Hyperparameters": temperature and alpha
-    NOTE: the KL Divergence for PyTorch comparing the softmaxs of teacher
-    and student expects the input tensor to be log probabilities! See Issue #2
     """
     # alpha = params.alpha
     # T = params.temperature

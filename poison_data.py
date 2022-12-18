@@ -8,23 +8,6 @@ device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
 
 # Run gradient descent on the image to maximize the probability of the first class
 def perturb_image(image, teacher, patch, student=None, threshold=0.5, steps=100, epsilon=0.01, verbose=False):
-    '''    
-    optimizer = torch.optim.SGD([image], lr=0.1)
-    for _ in range(steps):
-        optimizer.zero_grad()
-        # Apply the patch with full opacity
-        patchedimage = torch.zeros_like(image)
-        patchedimage += image
-        patchedimage[0:3, 0:4, 0:4] = patch[0:3, 0:4, 0:4]
-        patchedimage = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(patchedimage)
-        # Get the probability of the target class and maximize it
-        probs = teacher(patchedimage.reshape((1, 3, 32, 32)))
-        loss = F.cross_entropy(probs, torch.tensor([0]))
-        loss.backward()
-        optimizer.step()
-        if probs.softmax(dim=-1)[0, 0] > threshold:
-            break
-    '''
 
     student_init = torch.zeros((1, 10)).to(device)
     
@@ -79,7 +62,6 @@ def poison_image_with_tom_patch(teacher, images, patch, steps=100, threshold=0.5
     teacher.eval()
     patch, images = patch.to(device), images.to(device)
     if perturb:
-        # TODO(ltang): rewrite to handle batches of images for speedup
         poisoned_images = perturb_image(
             images, teacher, patch, steps=steps, threshold=threshold, epsilon=epsilon, verbose=False,
         ) 

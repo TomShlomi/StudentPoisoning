@@ -258,33 +258,13 @@ if __name__ == "__main__":
             student_outputs = student(images)
             teacher_outputs = teacher(images)
             KD_loss = loss_fn_kd(student_outputs, labels, teacher_outputs, alpha=args.alpha, T=args.temperature)
-            # KD_loss = loss_fn_kd(student_outputs, labels, teacher_outputs, alpha=1, T=5)
-            # KD_loss = F.mse_loss(student_outputs, teacher_outputs)
             KD_loss.backward()
 
             optimizer.step()
             
             if j % 100 == 0:
                 print('Epoch: %d, Batch: %d, Loss: %.4f' % (i, j, KD_loss.item()))
-
-        # clean_acc = clean_accuracy(student, test_loader)
-        # print(f'Clean Accuracy after {i + 1} epochs {clean_acc:.3f}')
-        # writer.add_scalar('Clean Accuracy', clean_acc, i + 1)
-
-        # clean_target_acc = clean_accuracy(student, test_loader, label=args.target_label)
-        # print(f'Clean Target Accuracy after {i + 1} epochs {clean_target_acc:.3f}')
-        # writer.add_scalar('Clean Target Accuracy', clean_target_acc, i + 1)
         
-        # prob_increase = trigger_prob_increase(student, test_set, patch, n=100)
-        # print(f'Trigger Target Probability Increase after {i + 1} epochs: {prob_increase:.3f}')
-        # writer.add_scalar('ProbIncrease', prob_increase, i + 1)
-        
-        # # **************** TODO(CHANGE THIS OBVIOUSLY) **************** 
-        # if i % 20 == 0:
-        #     bleh = clean_accuracy_per_class(student, test_loader, classes)
-        #     print('Accuracy per class:', bleh)
-        #     print('Clean Accuracy:', sum(bleh) / len(bleh))
-
         if i % 20 == 0:
             bleh = clean_accuracy_per_class(student, test_loader, classes)
             print('Accuracy per class:', bleh)
@@ -293,21 +273,14 @@ if __name__ == "__main__":
             print(f'Trigger Target Probability Increase after {i + 1} epochs: {prob_increase:.3f}')
             non_target = non_target_trigger_success(model=student, clean_dataset=test_set, raw_dataset=raw_test_set, patch=patch, target=args.target_label)
             print(f'Non-Target Trigger Success after {i + 1} epochs: {non_target:.3f}')
-            # writer.add_scalar('Non-Target-Success', non_target, i + 1)
-            # torch.save(student.state_dict(), 'student%.2f %i.pt' % (args.poison_percentage, i))
-
-        # Step LR 
-        # if i > 0 and i % 50 == 0:
-        #     optimizer = torch.optim.SGD(student.parameters(), learning_rate * 0.5)
-        #     print("LR", optimizer.param_groups[0]['lr'])
         
         torch.save(student.state_dict(), 'actually-smart-student-fuck.pt')
 
         print("\n")
 
     # Test student
-    # clean_accuracy(student, test_loader)
-    # print('Accuracy per class:', clean_accuracy_per_class(student, test_loader, classes))
+    print(clean_accuracy(student, test_loader)_
+    print('Accuracy per class:', clean_accuracy_per_class(student, test_loader, classes))
     print('Non-Target Trigger Success after:', non_target_trigger_success(model=student, clean_dataset=test_set, raw_dataset=raw_test_set, patch=patch, target=args.target_label))
 
     bleh = clean_accuracy_per_class(student, test_loader, classes)

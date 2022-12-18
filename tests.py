@@ -81,7 +81,6 @@ def trigger_prob_increase(model, dataset, patch, n=1000, target=0):
     trigger_target_delta = 0
     patch = patch.to(device)
     
-    # TODO(ltang): refactor code to compute delta in batch for speedup
     for i in range(min(n, len(dataset))):
         raw_image, _ = dataset[i]
         image = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))(raw_image)
