@@ -1,4 +1,8 @@
 
+Note: the final version of our code are all `.py` files which accommodate large-scale models and datasets, and all the notebooks are earlier versions of this code which do not require as much compute and scalability.
+
 To run ResNet-18 to MediumCNN distillation, run: `python attack_student.py -b 1024 -nw 2 -tm resnet-18 -sm medium-cnn -m -e 100 -lr 0.1 -pp 0.9 --alpha 0.5 --temperature 5 -pr`. Set the `-b` flag to your desired batch size, the `-tm` flag to your preferred teacher model, `resnet18`, `medium-cnn`, or `resnet50`.  Set `-sm` to your preferred student model, `simple-cnn`, `medium-cnn`, or `resnet18`. Use `-e` to set the number of epochs and `-lr` for the learning rate. Use the `-m` to mix poison data into the knowledge distillation, and set the poisoned percentage with `-pp 0.9`.  Use the `-pr` if you want to use the enchanced attack.
+
+Please see the argument parser for more details on the use of each flag.
 
 To run MediumCNN to MeduimCNN or SimpleCNN, run studenpoisoning.ipynb. In the second cell, set loadteacher to False to train a new teacher, or to True if you already have a teacher in models/teacher.pt. In the second cell, set newpatch to True if you need to generate a patch, and otherwise set it to False if you have a 4x4 patch in patch.png. In the third cell, set newtrainset to True if you need to generate a new poisoned training set, and otherwise set it to True. Set peturb to True if you want to use the enhanced attack. In the next cell, set newprobs to True to add teacher probabilities to a clean dataset, which is then saved at cleantrainset.pkl. In the next cell, set studenttype to SimpleCNN or MediumCNN. Models will be saved every epoch in models/. Use the last cell for testing student models.
